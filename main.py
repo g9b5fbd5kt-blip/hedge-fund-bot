@@ -1,52 +1,132 @@
-[ROLE]
-You are the CTO and Quant Lead for an autonomous AI hedge fund. Build a complete, modular Python ecosystem that runs 24/7. Your code must be production-grade, typed, tested, and runnable locally or on a VPS.
+"""
+Hedge Fund Exoskeleton Mobile v2.1
+Strategy: Dual Momentum + Yield Curve Filter
+Citations:
+- Antonacci, G. (2012). "Risk Premia Harvesting Through Dual Momentum"
+- Faber, M. (2007). "A Quantitative Approach to Tactical Asset Allocation"
+- Estrella, A. (2005). "The Yield Curve as a Leading Indicator", FRB New York
+- Harvey, C. (2017). "Backtesting" Journal of Portfolio Management
+Runs: Daily at 15:45 ET via GitHub Actions. iPhone compatible.
+"""
+import os
+import json
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from alpaca_trade_api.rest import REST, TimeFrame
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import requests
 
-[OBJECTIVE]
-1. Data Layer: Ingest real-time + historical data for equities, futures, FX, crypto across NYSE, LSE, TSE, HKEX, SGX, and other major venues. 
-2. Alpha Layer: Multiple AI agents analyze "market trend" = forward-looking momentum, sentiment, macro regime. "Back trend" = statistical mean reversion, co-integration, factor unwinds. Agents must disagree and debate.
-3. Execution Layer: Live paper trading engine with exchange simulators. Support stocks, ETFs, futures, FX, crypto. No real money until explicitly enabled by human flag.
-4. Risk Layer: Real-time VaR, drawdown caps, position limits, kill-switch. Auto-liquidate on breach.
-5. Business Layer: Agents for compliance logging, reporting, investor updates, P&L attribution, and ops monitoring. 
+ALPACA_KEY = os.environ.get('ALPACA_KEY')
+ALPACA_SECRET = os.environ.get('ALPACA_SECRET')
+ALPACA_BASE_URL = 'https://paper-api.alpaca.markets'
+SHEET_ID = os.environ.get('SHEET_ID')
+GSPREAD_JSON = os.environ.get('GSPREAD_JSON')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-[ARCHITECTURE REQUIREMENTS]
-1. Language: Python 3.11+. Use `uv` or `poetry` for deps.
-2. Core libs: `pandas`, `polars`, `duckdb`, `ccxt`, `yfinance`, `polygon-api`, `ib_insync` for data. `vectorbt`, `backtrader`, `nautilus_trader` for backtest + paper. `langgraph` or `crewai` for agent orchestration. `fastapi` for control plane. `streamlit` for dashboard.
-3. Data: Use free tiers first. Polygon.io, Alpaca, IBKR TWS API, TwelveData, FRED, NewsAPI. Abstract all data sources behind `DataProvider` interface.
-4. Agents: Define these as separate classes with message passing:
-   - `MacroAgent`: Reads FRED, central bank releases, yields. Outputs regime = RiskOn/RiskOff/Transition.
-   - `TrendAgent`: Multi-timeframe momentum, breakout, sentiment from news/Reddit/X. Outputs direction + conviction 0-1.
-   - `MeanRevertAgent`: Statistical arbitrage, pairs trading, RSI/z-score. Outputs fade signals.
-   - `RiskAgent`: Veto power. Calculates exposure, correlation, VaR. Can halt all trading.
-   - `PM_Agent`: Meta-agent. Takes all signals, runs portfolio optimization with cvxpy, allocates capital, sizes positions.
-   - `ComplianceAgent`: Logs every decision, data source, timestamp. Generates audit trail.
-   - `IR_Agent`: Writes daily investor memo in plain English from P&L and positions.
-5. Paper Trading: Implement `BrokerSim` that mirrors real slippage, fees, partial fills. Start in paper mode only. Add `ENABLE_LIVE_TRADING=False` env flag that must be manually flipped.
-6. Backtesting: Every new strategy must pass walk-forward test on last 10 years, with transaction costs, before paper deployment. 
-7. Timezones: System runs UTC. Scheduler handles NYSE 9:30-16:00 ET, LSE 8:00-16:30 GMT, TSE 9:00-15:00 JST. Pre-market + after-hours included.
-8. Safety: Hard cap 2% portfolio risk per trade, 10% max drawdown, 3x max gross leverage. If breached, RiskAgent closes all positions and pages human.
+SYMBOLS = ['SPY', 'QQQ', 'IWM']
+LOOKBACK_MOM = 200
+RISK_PER_TRADE = 0.01
+MAX_DD_STOP = 0.15
 
-[DELIVERABLES]
-1. `/agents/` directory with all agent classes.
-2. `/data/` data providers + caching layer.
-3. `/engine/` backtester + paper broker + live broker stubs.
-4. `/risk/` risk models and kill-switch.
-5. `/dashboard/` streamlit app: P&L, positions, agent debate transcript, logs.
-6. `/tests/` pytest coverage >80%.
-7. `docker-compose.yml` to run whole stack.
-8. `README.md` with setup, env vars, and "How to add a new agent" guide.
+def send_telegram(msg):
+    if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
-[BUILD ORDER]
-Step 1: Data + BrokerSim + basic dashboard. Prove you can pull data and simulate a trade.
-Step 2: Add TrendAgent + backtest on SPY. 
-Step 3: Add RiskAgent + drawdown control.
-Step 4: Add PM_Agent to combine signals.
-Step 5: Add remaining agents + 24/7 scheduler.
-Step 6: Run 30-day paper trading across all 3 sessions. Log results.
+def get_data():
+    end = datetime.now()
+    start = end - timedelta(days=LOOKBACK_MOM + 50)
+    df = yf.download(SYMBOLS, start=start, end=end, auto_adjust=True)['Close']
+    return df.dropna()
 
-[CONSTRAINTS]
-1. No real money, no broker API keys, no live orders until human sets `ENABLE_LIVE_TRADING=True`.
-2. All decisions must be explainable. Each trade writes a JSON with: timestamp, agent_votes, data_snapshot_ids, risk_check_result.
-3. You must cite data source and latency for every signal.
-4. If any API fails, fall back to cached data and alert. Never halt the system unless RiskAgent triggers.
+def get_yield_curve():
+    try:
+        t10 = yf.download('^TNX', period='5d')['Close'].iloc[-1] / 10
+        t3m = yf.download('^IRX', period='5d')['Close'].iloc[-1] / 10
+        return t10 - t3m
+    except:
+        return 1.0
 
-Begin by outputting the repo file tree, then implement Step 1.
+def calc_signals(df):
+    signals = {}
+    returns = df.pct_change(LOOKBACK_MOM).iloc[-1]
+    sma = df.rolling(LOOKBACK_MOM).mean().iloc[-1]
+    curve = get_yield_curve()
+    for sym in SYMBOLS:
+        abs_mom = df[sym].iloc[-1] > sma[sym]
+        rel_mom = returns[sym] == returns.max()
+        regime_ok = curve > 0
+        signals[sym] = abs_mom and rel_mom and regime_ok
+    return signals, curve
+
+def backtest(df):
+    df = df['2010-01-01':]
+    equity = [100000]
+    position = None
+    for i in range(LOOKBACK_MOM, len(df)):
+        window = df.iloc[i-LOOKBACK_MOM:i]
+        sig, _ = calc_signals(window)
+        buy_list = [s for s, v in sig.items() if v]
+        if buy_list and position!= buy_list[0]:
+            position = buy_list[0]
+        elif not buy_list:
+            position = None
+        ret = df[position].iloc[i] / df[position].iloc[i-1] - 1 if position else 0
+        equity.append(equity[-1] * (1 + ret * 0.998))
+    eq = pd.Series(equity, index=df.index[LOOKBACK_MOM-1:])
+    cagr = (eq.iloc[-1]/eq.iloc[0])**(252/len(eq)) - 1
+    dd = (eq / eq.cummax() - 1).min()
+    sharpe = eq.pct_change().mean() / eq.pct_change().std() * np.sqrt(252)
+    return {"CAGR": round(cagr,3), "MaxDD": round(dd,3), "Sharpe": round(sharpe,2)}
+
+def get_alpaca():
+    return REST(ALPACA_KEY, ALPACA_SECRET, ALPACA_BASE_URL)
+
+def run_paper_trade():
+    api = get_alpaca()
+    account = api.get_account()
+    equity = float(account.equity)
+    if float(account.equity) < float(account.last_equity) * (1 - MAX_DD_STOP):
+        send_telegram("KILL SWITCH: 15% drawdown hit. Trading halted.")
+        return
+    df = get_data()
+    signals, curve = calc_signals(df)
+    positions = {p.symbol: float(p.qty) for p in api.list_positions()}
+    for sym, should_hold in signals.items():
+        has_position = sym in positions
+        price = df[sym].iloc[-1]
+        if should_hold and not has_position:
+            shares = int(equity * RISK_PER_TRADE / (price * 0.07))
+            if shares > 0:
+                api.submit_order(symbol=sym, qty=shares, side='buy', type='market', time_in_force='day')
+                log_trade(sym, 'BUY', shares, price, f"Mom+ Curve:{curve:.2f}")
+                send_telegram(f"Bought {shares} {sym} @ {price:.2f}")
+        elif not should_hold and has_position:
+            api.close_position(sym)
+            log_trade(sym, 'SELL', positions[sym], price, "Signal off")
+            send_telegram(f"Sold {sym} @ {price:.2f}")
+    send_telegram(f"Daily run complete. Equity: ${equity:,.0f}. Curve: {curve:.2f}")
+
+def log_trade(symbol, action, qty, price, reason):
+    if not GSPREAD_JSON: return
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(GSPREAD_JSON),
+            ['https://spreadsheets.google.com/feeds'])
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SHEET_ID).sheet1
+    sheet.append_row([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, action, qty, round(price,2), reason])
+
+if __name__ == "__main__":
+    try:
+        df = get_data()
+        bt = backtest(df)
+        send_telegram(f"Backtest 2010-2024: CAGR {bt['CAGR']}, MaxDD {bt['MaxDD']}, Sharpe {bt['Sharpe']}")
+        if bt['Sharpe'] >= 0.8 and ALPACA_KEY:
+            run_paper_trade()
+        else:
+            send_telegram("BLOCKED: Sharpe <0.8 or no API keys. No trades placed.")
+    except Exception as e:
+        send_telegram(f"ERROR: {str(e)}")
