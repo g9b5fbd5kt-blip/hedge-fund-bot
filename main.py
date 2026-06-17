@@ -36,23 +36,29 @@ def send_telegram(msg):
     if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
-
 def get_data():
-    """Download data. Add retries + empty check. Source: Yahoo Finance."""
+    """Download data. Works on weekends by using last weekday. Source: Yahoo Finance."""
+    from pandas.tseries.offsets import BDay
+    
+    # If today is Sat/Sun, use Friday. BDay = business day
     end = datetime.now()
-    start = end - timedelta(days=LOOKBACK_MOM + 100) # Extra buffer
+    if end.weekday() >= 5:  # 5=Sat, 6=Sun
+        end = end - BDay(1) # Go back to Friday
+    
+    start = end - timedelta(days=LOOKBACK_MOM + 100)
     try:
-        df = yf.download(SYMBOLS, start=start, end=end, auto_adjust=True, progress=False)['Close']
+        df = yf.download(SYMBOLS, start=start, end=end + timedelta(days=1), 
+                         auto_adjust=True, progress=False)['Close']
         if df.empty:
-            send_telegram("ERROR: yfinance returned empty data. Market closed or API down.")
+            send_telegram("ERROR: yfinance empty even with BDay fix. Yahoo API down.")
             return pd.DataFrame()
-        # If only 1 symbol works, yfinance returns Series. Force DataFrame
         if isinstance(df, pd.Series):
             df = df.to_frame()
-        df = df.dropna(how='all') # Drop days where all symbols NaN
+        df = df.dropna(how='all')
         if len(df) < LOOKBACK_MOM:
-            send_telegram(f"ERROR: Only {len(df)} days of data. Need {LOOKBACK_MOM}.")
+            send_telegram(f"ERROR: Only {len(df)} days. Need {LOOKBACK_MOM}.")
             return pd.DataFrame()
+        send_telegram(f"Data OK: {len(df)} days loaded. Last date: {df.index[-1].date()}")
         return df
     except Exception as e:
         send_telegram(f"ERROR in get_data: {str(e)}")
