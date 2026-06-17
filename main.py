@@ -37,47 +37,53 @@ def send_telegram(msg):
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 def get_data():
-    """Download data. Primary: Alpaca IEX, Backup: Yahoo. Works on iPhone, $0."""
+    """Download data. Primary: Alpaca IEX feed, Backup: Stooq. $0, iPhone-safe."""
     from alpaca_trade_api.rest import TimeFrame
     from pandas.tseries.offsets import BDay
+    import pandas_datareader.data as web
 
     end = datetime.now()
     if end.weekday() >= 5:
         end = end - BDay(1)
     start = end - timedelta(days=LOOKBACK_MOM + 100)
 
-    # Try 1: Alpaca - free, reliable
+    # Try 1: Alpaca IEX - free, works on GitHub Actions
     try:
         api = get_alpaca()
         df = pd.DataFrame()
         for sym in SYMBOLS:
-            bars = api.get_bars(sym, TimeFrame.Day, start=start.strftime('%Y-%m-%d'),
-                               end=end.strftime('%Y-%m-%d'), adjustment='all').df
+            bars = api.get_bars(sym, TimeFrame.Day,
+                               start=start.strftime('%Y-%m-%d'),
+                               end=end.strftime('%Y-%m-%d'),
+                               adjustment='all',
+                               feed='iex').df # <-- THE FIX: free feed
             df[sym] = bars['close']
         df = df.dropna(how='all')
         if len(df) >= LOOKBACK_MOM:
-            send_telegram(f"Data OK via Alpaca: {len(df)} days. Last: {df.index[-1].date()}")
+            send_telegram(f"Data OK via Alpaca IEX: {len(df)} days. Last: {df.index[-1].date()}")
             return df
         else:
-            send_telegram(f"Alpaca returned only {len(df)} days. Trying Yahoo...")
+            send_telegram(f"Alpaca IEX only {len(df)} days. Trying Stooq...")
     except Exception as e:
-        send_telegram(f"Alpaca failed: {str(e)}. Trying Yahoo...")
+        send_telegram(f"Alpaca failed: {str(e)}. Trying Stooq...")
 
-    # Try 2: Yahoo fallback
+    # Try 2: Stooq - free, no key, never blocked. Data: https://stooq.com
     try:
-        df = yf.download(SYMBOLS, start=start, end=end + timedelta(days=1),
-                         auto_adjust=True, progress=False)['Close']
-        if isinstance(df, pd.Series):
-            df = df.to_frame()
+        df = pd.DataFrame()
+        for sym in SYMBOLS:
+            # Stooq uses SPY.US format
+            tmp = web.DataReader(f'{sym}.US', 'stooq', start=start, end=end)
+            df[sym] = tmp['Close']
+        df = df.sort_index() # Stooq returns newest first
         df = df.dropna(how='all')
         if len(df) >= LOOKBACK_MOM:
-            send_telegram(f"Data OK via Yahoo: {len(df)} days. Last: {df.index[-1].date()}")
+            send_telegram(f"Data OK via Stooq: {len(df)} days. Last: {df.index[-1].date()}")
             return df
         else:
-            send_telegram(f"ERROR: Yahoo only {len(df)} days. Need {LOOKBACK_MOM}.")
+            send_telegram(f"ERROR: Stooq only {len(df)} days. Need {LOOKBACK_MOM}.")
             return pd.DataFrame()
     except Exception as e:
-        send_telegram(f"CRITICAL: Both Alpaca and Yahoo failed. {str(e)}")
+        send_telegram(f"CRITICAL: All data sources failed. {str(e)}")
         return pd.DataFrame()
 def get_yield_curve():
     try:
