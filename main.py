@@ -67,16 +67,30 @@ def get_yield_curve():
         return 1.0
 
 def calc_signals(df):
+    """Dual Momentum. Returns empty dict if data bad."""
+    if df.empty or len(df) < LOOKBACK_MOM + 1:
+        return {}, 0
     signals = {}
-    returns = df.pct_change(LOOKBACK_MOM).iloc[-1]
-    sma = df.rolling(LOOKBACK_MOM).mean().iloc[-1]
-    curve = get_yield_curve()
-    for sym in SYMBOLS:
-        abs_mom = df[sym].iloc[-1] > sma[sym]
-        rel_mom = returns[sym] == returns.max()
-        regime_ok = curve > 0
-        signals[sym] = abs_mom and rel_mom and regime_ok
-    return signals, curve
+    try:
+        returns = df.pct_change(LOOKBACK_MOM).iloc[-1].dropna()
+        sma = df.rolling(LOOKBACK_MOM).mean().iloc[-1].dropna()
+        curve = get_yield_curve()
+
+        # Only use symbols that have enough data
+        valid_syms = list(set(returns.index) & set(sma.index) & set(df.columns))
+        if not valid_syms:
+            send_telegram("ERROR: No valid symbols after data clean.")
+            return {}, curve
+
+        for sym in valid_syms:
+            abs_mom = df[sym].iloc[-1] > sma[sym]
+            rel_mom = returns[sym] == returns[valid_syms].max()
+            regime_ok = curve > 0
+            signals[sym] = abs_mom and rel_mom and regime_ok
+        return signals, curve
+    except Exception as e:
+        send_telegram(f"ERROR in calc_signals: {str(e)}")
+        return {}, 0
 
 def backtest(df):
     df = df['2010-01-01':]
