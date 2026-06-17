@@ -37,33 +37,48 @@ def send_telegram(msg):
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 def get_data():
-    """Download data. Works on weekends by using last weekday. Source: Yahoo Finance."""
+    """Download data. Primary: Alpaca IEX, Backup: Yahoo. Works on iPhone, $0."""
+    from alpaca_trade_api.rest import TimeFrame
     from pandas.tseries.offsets import BDay
-    
-    # If today is Sat/Sun, use Friday. BDay = business day
+
     end = datetime.now()
-    if end.weekday() >= 5:  # 5=Sat, 6=Sun
-        end = end - BDay(1) # Go back to Friday
-    
+    if end.weekday() >= 5:
+        end = end - BDay(1)
     start = end - timedelta(days=LOOKBACK_MOM + 100)
+
+    # Try 1: Alpaca - free, reliable
     try:
-        df = yf.download(SYMBOLS, start=start, end=end + timedelta(days=1), 
+        api = get_alpaca()
+        df = pd.DataFrame()
+        for sym in SYMBOLS:
+            bars = api.get_bars(sym, TimeFrame.Day, start=start.strftime('%Y-%m-%d'),
+                               end=end.strftime('%Y-%m-%d'), adjustment='all').df
+            df[sym] = bars['close']
+        df = df.dropna(how='all')
+        if len(df) >= LOOKBACK_MOM:
+            send_telegram(f"Data OK via Alpaca: {len(df)} days. Last: {df.index[-1].date()}")
+            return df
+        else:
+            send_telegram(f"Alpaca returned only {len(df)} days. Trying Yahoo...")
+    except Exception as e:
+        send_telegram(f"Alpaca failed: {str(e)}. Trying Yahoo...")
+
+    # Try 2: Yahoo fallback
+    try:
+        df = yf.download(SYMBOLS, start=start, end=end + timedelta(days=1),
                          auto_adjust=True, progress=False)['Close']
-        if df.empty:
-            send_telegram("ERROR: yfinance empty even with BDay fix. Yahoo API down.")
-            return pd.DataFrame()
         if isinstance(df, pd.Series):
             df = df.to_frame()
         df = df.dropna(how='all')
-        if len(df) < LOOKBACK_MOM:
-            send_telegram(f"ERROR: Only {len(df)} days. Need {LOOKBACK_MOM}.")
+        if len(df) >= LOOKBACK_MOM:
+            send_telegram(f"Data OK via Yahoo: {len(df)} days. Last: {df.index[-1].date()}")
+            return df
+        else:
+            send_telegram(f"ERROR: Yahoo only {len(df)} days. Need {LOOKBACK_MOM}.")
             return pd.DataFrame()
-        send_telegram(f"Data OK: {len(df)} days loaded. Last date: {df.index[-1].date()}")
-        return df
     except Exception as e:
-        send_telegram(f"ERROR in get_data: {str(e)}")
+        send_telegram(f"CRITICAL: Both Alpaca and Yahoo failed. {str(e)}")
         return pd.DataFrame()
-
 def get_yield_curve():
     try:
         t10 = yf.download('^TNX', period='5d')['Close'].iloc[-1] / 10
