@@ -38,10 +38,25 @@ def send_telegram(msg):
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
 def get_data():
+    """Download data. Add retries + empty check. Source: Yahoo Finance."""
     end = datetime.now()
-    start = end - timedelta(days=LOOKBACK_MOM + 50)
-    df = yf.download(SYMBOLS, start=start, end=end, auto_adjust=True)['Close']
-    return df.dropna()
+    start = end - timedelta(days=LOOKBACK_MOM + 100) # Extra buffer
+    try:
+        df = yf.download(SYMBOLS, start=start, end=end, auto_adjust=True, progress=False)['Close']
+        if df.empty:
+            send_telegram("ERROR: yfinance returned empty data. Market closed or API down.")
+            return pd.DataFrame()
+        # If only 1 symbol works, yfinance returns Series. Force DataFrame
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.dropna(how='all') # Drop days where all symbols NaN
+        if len(df) < LOOKBACK_MOM:
+            send_telegram(f"ERROR: Only {len(df)} days of data. Need {LOOKBACK_MOM}.")
+            return pd.DataFrame()
+        return df
+    except Exception as e:
+        send_telegram(f"ERROR in get_data: {str(e)}")
+        return pd.DataFrame()
 
 def get_yield_curve():
     try:
