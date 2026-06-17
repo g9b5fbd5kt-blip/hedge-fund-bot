@@ -151,11 +151,14 @@ def log_trade(symbol, action, qty, price, reason):
 if __name__ == "__main__":
     try:
         df = get_data()
-        bt = backtest(df)
-        send_telegram(f"Backtest 2010-2024: CAGR {bt['CAGR']}, MaxDD {bt['MaxDD']}, Sharpe {bt['Sharpe']}")
-        if bt['Sharpe'] >= 0.8 and ALPACA_KEY:
-            run_paper_trade()
+        if df.empty:
+            send_telegram("BLOCKED: No data. Check if market is open or yfinance issue.")
         else:
-            send_telegram("BLOCKED: Sharpe <0.8 or no API keys. No trades placed.")
+            bt = backtest(df)
+            send_telegram(f"Backtest 2010-2024: CAGR {bt['CAGR']}, MaxDD {bt['MaxDD']}, Sharpe {bt['Sharpe']}")
+            if bt['Sharpe'] >= 0.8 and ALPACA_KEY:
+                run_paper_trade()
+            else:
+                send_telegram("BLOCKED: Sharpe <0.8 or no API keys. No trades placed.")
     except Exception as e:
-        send_telegram(f"ERROR: {str(e)}")
+        send_telegram(f"CRITICAL ERROR: {str(e)}")
