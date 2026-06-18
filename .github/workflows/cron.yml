@@ -1,7 +1,7 @@
 name: Hedge 24/7
 on:
   schedule:
-    - cron: '*/15 * * * *'  # every 15 minutes
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 jobs:
   trade:
@@ -9,7 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
+        with:
+          python-version: '3.11'
       - run: pip install alpaca-py pandas numpy requests
       - run: python main.py
         env:
@@ -18,4 +19,3 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
           RUN_MODE: ${{ secrets.RUN_MODE }}
-          ENABLE_OPTIONS: "true"  # set to false if you don't have options approved yet
