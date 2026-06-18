@@ -45,9 +45,12 @@ try:
     risk_pct = 0.03 if winrate>60 and total>20 else 0.022 if winrate>55 else 0.015
     tg(f"Memory: {total} trades | WR {winrate:.1f}% | Risk {risk_pct*100:.1f}%", "BRAIN")
 
-    def analyze(symbol, is_crypto):
+        def analyze(symbol, is_crypto):
         try:
-            req=(CryptoBarsRequest if is_crypto else StockBarsRequest)(symbol_or_symbols=symbol, timeframe=TimeFrame.FiveMinute, limit=50)
+            from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+            tf = TimeFrame(5, TimeFrameUnit.Minute)  # correct 5-min
+
+            req=(CryptoBarsRequest if is_crypto else StockBarsRequest)(symbol_or_symbols=symbol, timeframe=tf, limit=50)
             df=(c_data if is_crypto else s_data).get_crypto_bars(req).df if is_crypto else s_data.get_stock_bars(req).df
             if len(df)<20: return None
             df=df[df.symbol==symbol] if 'symbol' in df.columns else df
