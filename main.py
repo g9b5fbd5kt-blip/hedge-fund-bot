@@ -15,7 +15,7 @@ def tg(msg):
 # STARTUP PING - happens before anything else
 phrases = ["MAKING BANK 💸", "RACKING UP THAT PAPER 📈", "LET'S GET THIS BREAD", "TIME TO PRINT"]
 tg(f"⚡ {random.choice(phrases)}\nBot online {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
-
+tg(f"DEBUG: Keys loaded - ALPACA_KEY:{len(os.getenv('ALPACA_KEY',''))} chars, SECRET:{len(os.getenv('ALPACA_SECRET',''))} chars, PAPER:{os.getenv('ALPACA_PAPER','')}")
 try:
     # === NOW LOAD TRADING LIBS ===
     import pandas as pd, numpy as np
