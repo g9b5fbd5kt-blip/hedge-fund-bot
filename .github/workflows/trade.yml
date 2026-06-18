@@ -17,4 +17,4 @@ jobs:
           APCA_API_KEY_ID: ${{ secrets.ALPACA_KEY }}
           APCA_API_SECRET_KEY: ${{ secrets.ALPACA_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT }}
