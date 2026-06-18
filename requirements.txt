@@ -1,14 +1,14 @@
-# Core
+# ── Core ──────────────────────────────────────────────────────
 pandas>=2.0
 numpy>=1.26
 requests>=2.31
 
-# Alpaca — new unified SDK (replaces deprecated alpaca-trade-api)
+# ── Alpaca official SDK (replaces deprecated alpaca-trade-api) ─
 alpaca-py>=0.19.0
 
-# Market data fallback
+# ── Equity data fallback ───────────────────────────────────────
 pandas-datareader==0.10.0
 
-# Google Sheets logging
+# ── Google Sheets trade logging ────────────────────────────────
 gspread>=6.0
 oauth2client>=4.1.3
