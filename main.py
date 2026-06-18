@@ -142,45 +142,7 @@ def run_paper_trade():
     df = get_data()
     signals, curve = calc_signals(df)
     positions = {p.symbol: float(p.qty) for p in api.list_positions()}
-    for sym, should_hold in signals.items():
-        has_position = sym in positions
-        price = df[sym].iloc[-1]
-        if should_hold and not has_position:
-            shares = int(equity * RISK_PER_TRADE / (price * 0.07))
-            if shares > 0:
-                api.submit_order(symbol=sym, qty=shares, side='buy', type='market', time_in_force='day')
-                log_trade(sym, 'BUY', shares, price, f"Mom+ Curve:{curve:.2f}")
-                send_telegram(f"Bought {shares} {sym} @ {price:.2f}")
-        elif not should_hold and has_position:
-            api.close_position(sym)
-            log_trade(sym, 'SELL', positions[sym], price, "Signal off")
-            send_telegram(f"Sold {sym} @ {price:.2f}")
-    send_telegram(f"Daily run complete. Equity: ${equity:,.0f}. Curve: {curve:.2f}")
-def log_trade(symbol, action, qty, price, reason):
-    """Log to Google Sheets. If JSON bad, skip logging but don't crash."""
-    if not GSPREAD_JSON or len(GSPREAD_JSON) < 50:
-        return  # Skip silently if secret missing
-    try:
-        creds_dict = json.loads(GSPREAD_JSON)
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict,
-                ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive'])
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SHEET_ID).sheet1
-        sheet.append_row([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, action, qty, round(price,2), reason])
-    except Exception as e:
-        send_telegram(f"Sheet log skipped: {str(e)[:80]}")  # Don't crash, just notify
-
-if __name__ == "__main__":
-    try:
-        df = get_data()
-        if df.empty:
-            send_telegram("BLOCKED: No data. Check if market is open or yfinance issue.")
-        else:
-            bt = backtest(df)
-            send_telegram(f"Backtest 2010-2024: CAGR {bt['CAGR']}, MaxDD {bt['MaxDD']}, Sharpe {bt['Sharpe']}")
-            if bt['Sharpe'] >= 0.8 and ALPACA_KEY:
-                run_paper_trade()
-            else:
-                send_telegram("BLOCKED: Sharpe <0.8 or no API keys. No trades placed.")
-    except Exception as e:
-        send_telegram(f"CRITICAL ERROR: {str(e)}")
+    open_orders = [o.symbol for o in api.list_orders(status='open')]  # NEW
+    if open_orders:  # NEW
+        send_telegram(f"Skipping: open orders exist for {open_orders}")  # NEW
+        return  # NEW
