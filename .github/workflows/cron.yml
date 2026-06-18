@@ -1,22 +1,91 @@
-name: Run Bot Daily
+name: Autonomous Trading Bot
+
 on:
+  # ── EQUITIES: Mon–Fri at 3:45 PM ET (19:45 UTC) ─────────────
+  # Runs once daily at US market close. Checks all equity + intl ETF signals.
   schedule:
-    - cron: '45 19 * * 1-5'
+    - cron: '45 19 * * 1-5'   # Equity close run
+
+    # ── CRYPTO: Every 4 hours, 24/7/365 ─────────────────────────
+    # 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
+    - cron: '0 0,4,8,12,16,20 * * *'   # Crypto 4-hour cycle
+
+  # Manual trigger from GitHub Actions UI (emergency or test)
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: 'What to run: equities | crypto | both'
+        required: false
+        default: 'both'
+      paper:
+        description: 'Paper trading? true | false'
+        required: false
+        default: 'true'
+
+# Prevent two jobs running simultaneously (e.g. equity and crypto overlap)
+concurrency:
+  group: trading-bot
+  cancel-in-progress: false   # never cancel a trade mid-execution
+
 jobs:
   trade:
     runs-on: ubuntu-latest
+    timeout-minutes: 20       # hard kill — prevents runaway billing
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - run: python main.py
+          cache: 'pip'         # caches dependencies between runs (~30s savings)
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Determine run mode ─────────────────────────────────────
+      # If triggered by schedule, pick mode based on time:
+      #   • 19:45 UTC weekday  → equities
+      #   • all other times    → crypto
+      # If triggered manually, use the input.
+      - name: Set run mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RUN_MODE=${{ github.event.inputs.run_mode }}" >> $GITHUB_ENV
+            echo "ALPACA_PAPER=${{ github.event.inputs.paper }}" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +%H)
+            MIN=$(date -u +%M)
+            DOW=$(date -u +%u)  # 1=Mon 7=Sun
+            if [ "$HOUR" = "19" ] && [ "$MIN" = "45" ] && [ "$DOW" -le "5" ]; then
+              echo "RUN_MODE=equities" >> $GITHUB_ENV
+            else
+              echo "RUN_MODE=crypto" >> $GITHUB_ENV
+            fi
+            echo "ALPACA_PAPER=true" >> $GITHUB_ENV
+          fi
+
+      - name: Run bot
+        run: python main.py
         env:
-          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
-          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          GSPREAD_JSON: ${{ secrets.GSPREAD_JSON }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_MODE:        ${{ env.RUN_MODE }}
+          ALPACA_PAPER:    ${{ env.ALPACA_PAPER }}
+          TELEGRAM_TOKEN:  ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT:   ${{ secrets.TELEGRAM_CHAT }}
+          ALPACA_KEY:      ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET:   ${{ secrets.ALPACA_SECRET }}
+          GSPREAD_JSON:    ${{ secrets.GSPREAD_JSON }}
+          SHEET_ID:        ${{ secrets.SHEET_ID }}
+          FRED_API_KEY:    ${{ secrets.FRED_API_KEY }}
+
+      # ── Alert you on ANY failure ───────────────────────────────
+      - name: Notify on failure
+        if: failure()
+        run: |
+          MSG="🚨 Bot job FAILED (${RUN_MODE}) — $(date -u '+%Y-%m-%d %H:%M UTC')%0ALogs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT }}" \
+            --data-urlencode "text=${MSG}"
