@@ -38,11 +38,16 @@ ATR_PERIOD = 14
 
 # --- HELPERS ---
 def tg(msg):
-    if TELEGRAM_TOKEN and TELEGRAM_CHAT:
-        try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT, "text": msg}, timeout=10)
-        except: pass
-
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT:
+        log.warning(f"TELEGRAM MISSING SECRETS - would send: {msg[:80]}")
+        return
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        r = requests.post(url, json={"chat_id": TELEGRAM_CHAT, "text": msg}, timeout=10)
+        if r.status_code != 200:
+            log.error(f"Telegram API error {r.status_code}: {r.text[:100]}")
+    except Exception as e:
+        log.error(f"Telegram failed: {e}")
 def trade_client(): return TradingClient(ALPACA_KEY, ALPACA_SECRET, paper=IS_PAPER)
 def stock_client(): return StockHistoricalDataClient(ALPACA_KEY, ALPACA_SECRET)
 def crypto_client(): return CryptoHistoricalDataClient(ALPACA_KEY, ALPACA_SECRET)
