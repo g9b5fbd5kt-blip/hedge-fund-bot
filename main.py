@@ -1,10 +1,10 @@
-import os, logging, requests, pandas as pd, numpy as np, sqlite3, json
-from datetime import datetime, timezone
+import os, random, logging, requests, pandas as pd, numpy as np, sqlite3
+from datetime import datetime, timezone, timedelta
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.requests import MarketOrderRequest, ClosePositionRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
+from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -19,66 +19,90 @@ trade=TradingClient(KEY,SEC,paper=PAPER)
 stock=StockHistoricalDataClient(KEY,SEC)
 crypto=CryptoHistoricalDataClient()
 
-DB="research.db"
-def init_db():
-    con=sqlite3.connect(DB); con.execute("""CREATE TABLE IF NOT EXISTS signals
-    (ts TEXT, symbol TEXT, price REAL, rsi REAL, ema_spread REAL, vol_ratio REAL, pattern TEXT, outcome TEXT)"""); con.commit(); con.close()
+DB="brain.db"
+def init():
+    con=sqlite3.connect(DB); con.execute("""CREATE TABLE IF NOT EXISTS research
+    (ts TEXT, symbol TEXT, action TEXT, price REAL, rsi REAL, volx REAL, trend20 REAL, win_rate REAL, notes TEXT)"""); con.commit(); con.close()
 
 def tg(m): 
     if TG_T and TG_C:
-        try: requests.post(f"https://api.telegram.org/bot{TG_T}/sendMessage",json={"chat_id":TG_C,"text":m},timeout=8)
+        try: requests.post(f"https://api.telegram.org/bot{TG_T}/sendMessage", json={"chat_id":TG_C,"text":m}, timeout=10)
         except: pass
 
-def rsi(s): d=s.diff(); u=d.clip(lower=0).ewm(14).mean(); d=(-d.clip(upper=0)).ewm(14).mean(); return 100-100/(1+u/d)
-def get_memory_pattern(sym):
-    con=sqlite3.connect(DB); df=pd.read_sql("SELECT * FROM signals WHERE symbol=? AND outcome='win' ORDER BY ts DESC LIMIT 20",(sym,),con); con.close()
-    return df
+def startup():
+    phrases = ["making bank 💸", "racking up that paper 📈", "let's get this bread", "time to print", "another me is online"]
+    tg(f"⚡ {random.choice(phrases).upper()}\nHourly scan starting {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
 
-def scan_universe(symbols, data_client, is_crypto):
-    init_db(); acct=trade.get_account(); eq=float(acct.equity)
-    tg(f"⚡ v4 DAY-TRADER START\nMode: {MODE}\nEquity: ${eq:,.0f}\nScanning {len(symbols)} assets @ {datetime.now(timezone.utc).strftime('%H:%M')}")
-    wins=0; trades=0
-    for sym in symbols[:150]: # GitHub time limit - scan top 150 per run, rotates
+def rsi(s): return 100-100/(1+s.diff().clip(lower=0).ewm(14).mean()/ -s.diff().clip(upper=0).ewm(14).mean())
+def get_universe():
+    # ALL accessible markets - top active
+    try:
+        assets = trade.get_all_assets()
+        stocks = [a.symbol for a in assets if a.tradable and a.status=='active' and a.exchange in ['NASDAQ','NYSE']][:250]
+    except: stocks = ["AAPL","MSFT","NVDA","TSLA","AMD","AMZN","META","GOOGL","SPY","QQQ","NFLX","COIN","MARA","RIOT","PLTR","SOXL","TQQQ"]
+    crypto = ["BTC/USD","ETH/USD","SOL/USD","AVAX/USD","LINK/USD","DOGE/USD","ADA/USD","XRP/USD","LTC/USD","BCH/USD","DOT/USD","MATIC/USD","UNI/USD","ATOM/USD","ARB/USD","OP/USD","SUI/USD","PEPE/USD","WIF/USD","BONK/USD","NEAR/USD","RNDR/USD","INJ/USD","APT/USD","SEI/USD","TIA/USD","JUP/USD","DOGE/USD","SHIB/USD","TRX/USD"]
+    return stocks + crypto
+
+def research_stats(sym, df):
+    trend20 = (df.close.iloc[-1]/df.close.iloc[-20]-1)*100
+    volx = df.volume.iloc[-1]/df.volume.rolling(20).mean().iloc[-1]
+    win_rate = 0
+    try:
+        con=sqlite3.connect(DB); cur=con.execute("SELECT COUNT(*), SUM(CASE WHEN notes LIKE '%win%' THEN 1 ELSE 0 END) FROM research WHERE symbol=?", (sym,)); tot,wins=cur.fetchone(); con.close()
+        win_rate = (wins/tot*100) if tot else 0
+    except: pass
+    return {"trend20":trend20, "volx":volx, "win_rate":win_rate, "last5":df.close.tail(5).tolist()}
+
+def trade_asset(sym, df, is_crypto):
+    l=df.iloc[-1]; r=rsi(df.close).iloc[-1]; ema9=df.close.ewm(9).mean().iloc[-1]; ema21=df.close.ewm(21).mean().iloc[-1]
+    volx = df.volume.iloc[-1]/df.volume.rolling(20).mean().iloc[-1]
+    stats = research_stats(sym, df)
+    action=None; reason=""
+    # AGGRESSIVE DAY-TRADER LOGIC
+    if ema9>ema21 and r>52 and volx>1.8 and stats['trend20']>-5: 
+        action="BUY"; reason=f"momentum + vol {volx:.1f}x"
+    elif r<35 and l.close < df.close.rolling(20).mean().iloc[-1]*0.98:
+        action="BUY"; reason="oversold bounce"
+    elif r>72 or (ema9<ema21 and volx>2):
+        action="SELL"; reason="take profit / fade"
+    
+    if action:
+        # research stats ONLY for picks
+        back = f"20d trend: {stats['trend20']:+.1f}%\nWin rate memory: {stats['win_rate']:.0f}%\nLast 5: {' → '.join([f'{x:.2f}' for x in stats['last5']])}"
+        tg(f"🎯 {action} {sym} @ ${l.close:.2f}\nReason: {reason}\nRSI {r:.0f} | Vol {volx:.1f}x\n--- RESEARCH ---\n{back}")
+        # store
+        con=sqlite3.connect(DB); con.execute("INSERT INTO research VALUES (?,?,?,?,?,?,?,?,?)",
+            (datetime.now(timezone.utc).isoformat(), sym, action, float(l.close), float(r), float(volx), float(stats['trend20']), float(stats['win_rate']), reason)); con.commit(); con.close()
+        # execute aggressive
         try:
-            tf=TimeFrame.Minute if not is_crypto else TimeFrame.FiveMinute
-            req = (CryptoBarsRequest if is_crypto else StockBarsRequest)(symbol_or_symbols=sym, timeframe=tf, limit=200)
-            df = (crypto if is_crypto else stock).get_crypto_bars(req).df.reset_index() if is_crypto else stock.get_stock_bars(req).df.reset_index()
-            df=df[df.symbol==sym]; 
-            if len(df)<50: continue
-            df['ema9']=df.close.ewm(9).mean(); df['ema21']=df.close.ewm(21).mean(); df['vwap']=(df.close*df.volume).cumsum()/df.volume.cumsum()
-            df['rsi']=rsi(df.close); df['vol_avg']=df.volume.rolling(20).mean(); df['vol_ratio']=df.volume/df.vol_avg
-            l=df.iloc[-1]; prev=df.iloc[-2]
-            # ANTICIPATION: EMA cross imminent + volume building + RSI room
-            ema_squeeze = abs(l.ema9-l.ema21)/l.close < 0.002
-            vol_build = l.vol_ratio > 1.5 and l.vol_ratio > prev.vol_ratio
-            rsi_room = 45 < l.rsi < 62
-            pattern="none"
-            if ema_squeeze and vol_build and rsi_room: pattern="anticipate_breakout"
-            elif l.close > l.vwap and l.ema9 > l.ema21 and l.vol_ratio>2: pattern="momentum_confirm"
-            
-            # MEMORY CHECK
-            mem = get_memory_pattern(sym)
-            memory_boost = len(mem[mem.pattern==pattern]) > 3
-            
-            if pattern!="none":
-                risk_pct = 0.015 if memory_boost else 0.01
-                atr = (df.high-df.low).rolling(14).mean().iloc[-1]
-                qty = max(1, int((eq*risk_pct)/(2*max(atr,0.01))))
-                reason = f"{pattern} {'+MEMORY' if memory_boost else ''} | RSI {l.rsi:.0f} Vol {l.vol_ratio:.1f}x"
-                tg(f"🎯 {sym} ${l.close:.2f}\n{reason}\nSize: {qty}")
-                # store research
-                con=sqlite3.connect(DB); con.execute("INSERT INTO signals VALUES (?,?,?,?,?,?,?,?)",
-                    (datetime.now(timezone.utc).isoformat(), sym, float(l.close), float(l.rsi), float(l.ema9-l.ema21), float(l.vol_ratio), pattern, "pending")); con.commit(); con.close()
-                try:
-                    trade.submit_order(MarketOrderRequest(symbol=sym.replace('/',''), qty=qty, side=OrderSide.BUY, time_in_force=TimeInForce.DAY))
-                    trades+=1; wins+=1 if memory_boost else 0
-                except Exception as e: tg(f"❌ {sym} {e}")
-        except Exception as e: continue
-    tg(f"🏁 SCAN DONE\nTrades: {trades}\nMemory-boosted wins: {wins}\nNext run in 5m")
+            qty = 1 if is_crypto else max(1, int(1000/l.close))  # aggressive sizing
+            if action=="BUY":
+                trade.submit_order(MarketOrderRequest(symbol=sym.replace('/',''), qty=qty, side=OrderSide.BUY, time_in_force=TimeInForce.DAY))
+            else:
+                try: trade.close_position(sym.replace('/',''))
+                except: pass
+            return True
+        except Exception as e: tg(f"❌ {sym} fail: {e}")
+    return False
+
+def summary():
+    acct=trade.get_account(); positions=trade.get_all_positions()
+    pos_text = "\n".join([f"{p.symbol}: {p.qty} (${float(p.unrealized_pl):+.0f})" for p in positions[:10]]) or "No positions"
+    tg(f"📊 HOURLY SUMMARY\nEquity: ${float(acct.equity):,.0f}\nCash: ${float(acct.cash):,.0f}\nPositions ({len(positions)}):\n{pos_text}\n---\nNext scan in 60m. Stay aggressive.")
 
 if __name__=="__main__":
-    # Full market lists - top volume (you can expand)
-    crypto_list = ["BTC/USD","ETH/USD","SOL/USD","AVAX/USD","LINK/USD","DOGE/USD","ADA/USD","XRP/USD","LTC/USD","BCH/USD","DOT/USD","MATIC/USD","UNI/USD","ATOM/USD","ALGO/USD","FIL/USD","AAVE/USD","SHIB/USD","TRX/USD","ETC/USD","APT/USD","ARB/USD","OP/USD","SUI/USD","PEPE/USD","WIF/USD","BONK/USD","NEAR/USD","RNDR/USD","INJ/USD"]
-    stock_list = ["AAPL","MSFT","NVDA","TSLA","AMD","AMZN","META","GOOGL","SPY","QQQ","NFLX","COIN","MARA","RIOT","SOXL","TQQQ","SQQQ","PLTR","SMCI","AVGO","TSM","MU","INTC","BA","DIS","JPM","BAC","XOM","CVX","PFE"] # expand to 500 later
-    if MODE=="crypto": scan_universe(crypto_list, crypto, True)
-    else: scan_universe(stock_list, stock, False)
+    init(); startup()
+    universe = get_universe()
+    log.info(f"Scanning {len(universe)} assets")
+    picks=0
+    for sym in universe:
+        is_crypto = '/' in sym
+        try:
+            tf = TimeFrame.FiveMinute
+            req = (CryptoBarsRequest if is_crypto else StockBarsRequest)(symbol_or_symbols=sym, timeframe=tf, limit=100)
+            df = (crypto if is_crypto else stock).get_crypto_bars(req).df.reset_index() if is_crypto else stock.get_stock_bars(req).df.reset_index()
+            df=df[df.symbol==sym]
+            if len(df)>30 and trade_asset(sym, df, is_crypto): picks+=1
+        except: continue
+    tg(f"✅ Scan complete. Picks made: {picks}")
+    summary()
