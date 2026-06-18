@@ -1,5 +1,12 @@
-import os, random, traceback, requests, sqlite3, time
-from datetime import datetime, timezone
+import os, requests
+TG_T=os.getenv("TELEGRAM_TOKEN",""); TG_C=os.getenv("TELEGRAM_CHAT","")
+def tg(m): requests.post(f"https://api.telegram.org/bot{TG_T}/sendMessage",json={"chat_id":TG_C,"text":m[:4000]})
+
+KEY=os.getenv("ALPACA_KEY",""); SEC=os.getenv("ALPACA_SECRET","")
+tg(f"KEY starts: {KEY[:4]}... len {len(KEY)}\nSEC len {len(SEC)}")
+# Test direct API
+r=requests.get("https://paper-api.alpaca.markets/v2/account", auth=(KEY,SEC), timeout=10)
+tg(f"Alpaca test: {r.status_code} {r.text[:100]}")
 
 # === TELEGRAM CORE - NEVER FAILS ===
 TG_T = os.getenv("TELEGRAM_TOKEN","").strip()
