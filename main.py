@@ -30,35 +30,40 @@ try:
     equity = float(acct.equity)
     tg(f"Connected | Equity ${equity:,.0f}", "ACCOUNT")
 
-    # Universe - expanded from Claude's recommendation
     symbols = ["BTC/USD","ETH/USD","SOL/USD","AVAX/USD","LINK/USD"] if MODE=="crypto" else ["NVDA","TSLA","SPY"]
     is_crypto = {s: "/" in s for s in symbols}
 
-    # Analyze all concurrently (Claude's upgrade)
     data_clients = {"stock": s_data, "crypto": c_data}
     signals = analyze_all(symbols, is_crypto, data_clients)
 
     tg(f"Scanning {len(symbols)} | Found {len(signals)} setups", "SCAN")
 
     actions = 0
-    for sig in signals[:3]: # max 3 trades per run to manage risk
+    for sig in signals[:3]:
         if sig.score < 5.5: continue
 
-        # Kelly-inspired sizing (simplified without DB)
-        risk_pct = 0.02 # 2% per trade
+        risk_pct = 0.02
         stop_dist = sig.atr * 2
-        qty = round((equity * risk_pct) / max(stop_dist, sig.price*0.01), 6)
+        qty = (equity * risk_pct) / max(stop_dist, sig.price*0.01)
+        
+        # FIX FOR STOCKS: whole shares + DAY order
+        if not is_crypto[sig.symbol]:
+            qty = int(qty)  # no fractions for stocks
+            tif = TimeInForce.DAY
+        else:
+            qty = round(qty, 6)
+            tif = TimeInForce.GTC
 
-        if qty * sig.price < 5: continue # skip dust
+        if qty < 1: continue
 
         try:
-            order = MarketOrderRequest(symbol=sig.symbol.replace("/",""), qty=qty, side=OrderSide.BUY, time_in_force=TimeInForce.GTC)
+            order = MarketOrderRequest(symbol=sig.symbol.replace("/",""), qty=qty, side=OrderSide.BUY, time_in_force=tif)
             trade.submit_order(order)
-            tg(f"BUY {sig.symbol} ${sig.price:.2f} | Score {sig.score:.1f}/10 | {sig.setup_type}", "TRADE")
+            tg(f"BUY {sig.symbol} ${sig.price:.2f} x{qty} | Score {sig.score:.1f}/10 | {sig.setup_type}", "TRADE")
             actions += 1
             time.sleep(1)
         except Exception as e:
-            tg(f"Order fail {sig.symbol}: {str(e)[:80]}", "ERROR")
+            tg(f"Order fail {sig.symbol}: {str(e)[:100]}", "ERROR")
 
     tg(f"DONE | Actions:{actions} | Equity ${equity:,.0f}", "SUMMARY")
 
