@@ -156,14 +156,19 @@ def run_paper_trade():
             log_trade(sym, 'SELL', positions[sym], price, "Signal off")
             send_telegram(f"Sold {sym} @ {price:.2f}")
     send_telegram(f"Daily run complete. Equity: ${equity:,.0f}. Curve: {curve:.2f}")
-
 def log_trade(symbol, action, qty, price, reason):
-    if not GSPREAD_JSON: return
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(GSPREAD_JSON),
-            ['https://spreadsheets.google.com/feeds'])
-    client = gspread.authorize(creds)
-    sheet = client.open_by_key(SHEET_ID).sheet1
-    sheet.append_row([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, action, qty, round(price,2), reason])
+    """Log to Google Sheets. If JSON bad, skip logging but don't crash."""
+    if not GSPREAD_JSON or len(GSPREAD_JSON) < 50:
+        return  # Skip silently if secret missing
+    try:
+        creds_dict = json.loads(GSPREAD_JSON)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict,
+                ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive'])
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SHEET_ID).sheet1
+        sheet.append_row([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, action, qty, round(price,2), reason])
+    except Exception as e:
+        send_telegram(f"Sheet log skipped: {str(e)[:80]}")  # Don't crash, just notify
 
 if __name__ == "__main__":
     try:
