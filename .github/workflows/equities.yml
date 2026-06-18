@@ -1,7 +1,7 @@
 name: Crypto 4hr
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '*/5 13-20 * * 1-5'  # 9:30-4pm ET, weekdays
   workflow_dispatch:
 jobs:
   trade:
