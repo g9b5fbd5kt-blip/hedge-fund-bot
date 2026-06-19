@@ -1,16 +1,9 @@
 name: Hedge Fund Bot 24/7
 
 on:
-  schedule:
-    # Market hours: every 5 min (high volatility)
-    - cron: '*/5 13-20 * * 1-5' # 9:30am-4pm ET = 13:30-20:00 UTC
-    # Extended hours: every 15 min
-    - cron: '*/15 8-13,20-0 * * 1-5' # 4am-9:30am, 4pm-8pm ET
-    # Overnight crypto: every 30 min
-    - cron: '*/30 0-8 * * *' # 8pm-4am ET
-    # Weekends crypto: hourly
-    - cron: '0 * * * 0,6'
   workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
 
 jobs:
   trade:
