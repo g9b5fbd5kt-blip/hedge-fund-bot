@@ -230,6 +230,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T18:20:30.635982",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -872,7 +879,64 @@
           "reason": "Score 1/5 RSI 45"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T18:20:30.635982",
+      "decisions": [
+        {
+          "symbol": "META",
+          "action": "HOLD",
+          "score": 1,
+          "price": 577.219970703125,
+          "reason": "Score 1/5 RSI 36"
+        },
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 2,
+          "price": 368.0299987792969,
+          "reason": "Score 2/5 RSI 43"
+        },
+        {
+          "symbol": "NVDA",
+          "action": "SELL",
+          "score": 2,
+          "price": 210.69000244140625,
+          "reason": "Score 2/5 RSI 50 - risk sell 1"
+        },
+        {
+          "symbol": "AAPL",
+          "action": "HOLD",
+          "score": 2,
+          "price": 298.010009765625,
+          "reason": "Score 2/5 RSI 39"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1702.300048828125,
+          "reason": "Score 1/5 RSI 45"
+        }
+      ]
     }
   ],
-  "pending_orders": []
+  "pending_orders": [
+    {
+      "id": "98a546da-0f4b-40ee-ba6d-cd5ec882bd11",
+      "symbol": "NVDA",
+      "side": "sell",
+      "qty": 1,
+      "price": 210.69000244140625,
+      "time": "2026-06-19T18:20:30.635982"
+    },
+    {
+      "id": "230af6be-b4bc-4e82-9600-075c7a26d249",
+      "symbol": "QQQ",
+      "side": "sell",
+      "qty": 10,
+      "price": 740.6199951171875,
+      "time": "2026-06-19T18:20:30.635982"
+    }
+  ]
 }
