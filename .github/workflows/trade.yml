@@ -1,4 +1,4 @@
-lname: Hedge Fund Bot
+name: Hedge Fund Bot
 
 on:
   workflow_dispatch:
