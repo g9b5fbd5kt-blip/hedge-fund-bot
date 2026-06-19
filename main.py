@@ -46,4 +46,52 @@ for p in positions[:3]:
         
         bars['MA20'] = bars['close'].rolling(20).mean()
         bars['VolAvg'] = bars['volume'].rolling(10).mean()
-        price = bars['close'].iloc
+        price = bars['close'].iloc[-1]
+        ma20 = bars['MA20'].iloc[-1]
+        vol = bars['volume'].iloc[-1]
+        vol_avg = bars['VolAvg'].iloc[-1]
+        
+        delta = bars['close'].diff()
+        gain = delta.clip(lower=0).rolling(14).mean()
+        loss = -delta.clip(upper=0).rolling(14).mean()
+        rsi = 100 - (100 / (1 + gain/loss))
+        rsi_now = float(rsi.iloc[-1])
+        
+        score = 0
+        reasons = []
+        if price > ma20:
+            score += 40
+            reasons.append("price is above average")
+        else:
+            reasons.append("price is below average")
+        if rsi_now < 70:
+            score += 30
+            reasons.append("not overbought")
+        else:
+            reasons.append("getting expensive")
+        if vol > vol_avg:
+            score += 30
+            reasons.append("more people buying")
+        else:
+            reasons.append("quiet volume")
+        
+        trend = "Bullish" if price > ma20 else "Bearish"
+        color = 'green' if trend == "Bullish" else 'red'
+        
+        plt.figure(figsize=(6,3))
+        plt.plot(bars.index, bars['close'], color=color, linewidth=2)
+        plt.plot(bars.index, bars['MA20'], '--', color='gray', alpha=0.6)
+        plt.title(f"{sym} - {score}% confident", color=color)
+        plt.grid(alpha=0.2)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150)
+        plt.close()
+        buf.seek(0)
+        
+        thinking = f"I'm {score}% sure because {', '.join(reasons[:2])}."
+        caption = f"*{sym}* — {trend}\n{thinking}\nConfidence: {score}% | RSI: {rsi_now:.0f}"
+        send_photo(buf, caption)
+        
+    except Exception as e:
+        send_tg(f"⚠️ {sym} analysis skipped")
