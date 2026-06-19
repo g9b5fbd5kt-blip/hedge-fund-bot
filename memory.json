@@ -146,6 +146,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:30:40.065282",
+      "nvda": 210.69,
+      "qqq": 740.62,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -306,6 +313,46 @@
           "score": 2,
           "price": 411.3500061035156,
           "reason": "Score 2/5 RSI 43"
+        }
+      ]
+    },
+    {
+      "time": "2026-06-19T17:30:40.065998",
+      "decisions": [
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5 RSI 50"
+        },
+        {
+          "symbol": "SPY",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5 RSI 50"
+        },
+        {
+          "symbol": "TSLA",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5 RSI 50"
+        },
+        {
+          "symbol": "BTC-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 62887.73828125,
+          "reason": "Score 1/5 RSI 47"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1695.449951171875,
+          "reason": "Score 1/5 RSI 45"
         }
       ]
     }
