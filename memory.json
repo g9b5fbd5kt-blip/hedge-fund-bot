@@ -223,6 +223,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T18:16:36.230676",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -825,32 +832,47 @@
           "reason": "Score 2/5 RSI 39"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T18:16:36.230676",
+      "decisions": [
+        {
+          "symbol": "AVGO",
+          "action": "HOLD",
+          "score": 2,
+          "price": 411.3500061035156,
+          "reason": "Score 2/5 RSI 43"
+        },
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 379.3999938964844,
+          "reason": "Score 1/5 RSI 19"
+        },
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 2,
+          "price": 368.0299987792969,
+          "reason": "Score 2/5 RSI 43"
+        },
+        {
+          "symbol": "NVDA",
+          "action": "HOLD",
+          "score": 2,
+          "price": 210.69000244140625,
+          "reason": "Score 2/5 RSI 50"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1702.93994140625,
+          "reason": "Score 1/5 RSI 45"
+        }
+      ]
     }
   ],
-  "pending_orders": [
-    {
-      "id": "c46f0abf-e870-44c9-8a38-6c60b5631358",
-      "symbol": "QQQ",
-      "side": "sell",
-      "qty": 5,
-      "price": 740.6199951171875,
-      "time": "2026-06-19T18:00:40.221849"
-    },
-    {
-      "id": "2836859e-805e-44ee-89b0-52641f6e6d80",
-      "symbol": "NVDA",
-      "side": "sell",
-      "qty": 1,
-      "price": 210.69000244140625,
-      "time": "2026-06-19T18:06:24.746980"
-    },
-    {
-      "id": "e7a8611a-45f0-4d0e-9407-5c1d6cea1e78",
-      "symbol": "QQQ",
-      "side": "sell",
-      "qty": 5,
-      "price": 740.6199951171875,
-      "time": "2026-06-19T18:06:24.746980"
-    }
-  ]
+  "pending_orders": []
 }
