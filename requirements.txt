@@ -1,7 +1,5 @@
 alpaca-trade-api==3.2.0
-pandas==2.2
-numpy==1.26.4
-matplotlib==3.8.4
-pytz==2024.1
-requests==2.32.3
-yfinance==0.2.40 
+matplotlib==3.8.2
+pandas==2.1.4
+requests==2.31.0
+pytz==2023.3
