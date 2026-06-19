@@ -11,28 +11,7 @@ async def send_telegram(text):
     async with aiohttp.ClientSession() as s:
         await s.post(url, json={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
 
-def format_message(account, positions):
-    equity = float(account.get('equity', 0))
-    last_equity = float(account.get('last_equity', equity))
-    bp = float(account.get('buying_power', 0))
-    
-    day_change = equity - last_equity
-    day_pct = (day_change / last_equity * 100) if last_equity else 0
-    
-    # Header
-    sign = "+" if day_change >= 0 else ""
-    lines = [
-        "GETTING THAT PAPER 💸",
-        "",
-        "━━━━━━━━━━━━━━━━━━━━",
-        f"💰 ${equity:,.0f} ({sign}${abs(day_change):,.0f} today)",
-        f"📊 Buying Power: ${bp:,.0f}",
-        f"📈 Day: {sign}{abs(day_pct):.2f}%",
-        "",
-        "Holdings"
-    ]
-    
-    # Holdings - simple and clean
+def format_message(account, positions, signals=None, actions=None):
     for p in positions:
         sym = p.get('symbol')
         qty = p.get('qty')
