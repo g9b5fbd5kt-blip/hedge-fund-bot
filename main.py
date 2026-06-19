@@ -3,9 +3,9 @@ from datetime import datetime
 from alpaca_trade_api.rest import REST, TimeFrame
 import requests
 
-# --- CONFIG (from our deep research) ---
-ACCOUNT_RISK_PCT = 0.01  # 1% — Investopedia max 2%
-EXTENDED_RISK_MULT = 0.5  # halve for extended hours
+# --- CONFIG ---
+ACCOUNT_RISK_PCT = 0.01
+EXTENDED_RISK_MULT = 0.5
 CONFIDENCE_THRESHOLD = 0.75
 
 api = REST(os.getenv('ALPACA_KEY'), os.getenv('ALPACA_SECRET'), base_url='https://paper-api.alpaca.markets')
@@ -26,7 +26,6 @@ def get_session():
     hour = now_et.hour
     weekday = now_et.weekday() < 5
     extended = weekday and ((4 <= hour < 9) or (16 <= hour < 20))
-    
     if is_open:
         return "REGULAR", ["AAPL", "MSFT", "NVDA"]
     elif extended:
@@ -48,8 +47,16 @@ account = api.get_account()
 account_value = float(account.equity)
 now_cst = datetime.now(pytz.timezone('US/Central')).strftime('%I:%M %p')
 
-# Heartbeat with thinking
-send_tg(f"✅ *Heartbeat* {now_cst}\n"
-        f"Session: {session}\n"
-        f"Account: ${account_value:.2f}\n"
-        f"Risk/trade: ${account_value*ACCOUNT_RISK_PCT:.2f} (
+risk_per_trade = account_value * ACCOUNT_RISK_PCT
+msg = f"✅ *Heartbeat* {now_cst}\nSession: {session}\nAccount: ${account_value:.2f}\nRisk/trade: ${risk_per_trade:.2f} (1%)\nScanning: {', '.join(universe)}"
+send_tg(msg)
+
+for ticker in universe:
+    try:
+        if "/" in ticker:
+            price = float(api.get_latest_crypto_trade(ticker).price)
+        else:
+            price = float(api.get_latest_trade(ticker).price)
+        
+        confidence = 0.82
+        rsi
