@@ -1,21 +1,77 @@
-2026-06-19T21:30:51.5604979Z ##[group]Run python bot.py
-2026-06-19T21:30:51.5605292Z [36;1mpython bot.py[0m
-2026-06-19T21:30:51.5641738Z shell: /usr/bin/bash -e {0}
-2026-06-19T21:30:51.5642020Z env:
-2026-06-19T21:30:51.5642317Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
-2026-06-19T21:30:51.5642791Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
-2026-06-19T21:30:51.5643224Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
-2026-06-19T21:30:51.5643624Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
-2026-06-19T21:30:51.5644020Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
-2026-06-19T21:30:51.5644408Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
-2026-06-19T21:30:51.5645248Z   ALPACA_KEY: ***
-2026-06-19T21:30:51.5645589Z   ALPACA_SECRET: ***
-2026-06-19T21:30:51.5645929Z   TELEGRAM_TOKEN: ***
-2026-06-19T21:30:51.5646192Z   TELEGRAM_CHAT: ***
-2026-06-19T21:30:51.5646419Z   DATABASE_URL: 
-2026-06-19T21:30:51.5646647Z ##[endgroup]
-2026-06-19T21:30:52.4406933Z Traceback (most recent call last):
-2026-06-19T21:30:52.4414053Z   File "/home/runner/work/hedge-fund-bot/hedge-fund-bot/bot.py", line 1, in <module>
-2026-06-19T21:30:52.4414623Z     import json, os, requests, yfinance as yf
-2026-06-19T21:30:52.4415033Z ModuleNotFoundError: No module named 'yfinance'
-2026-06-19T21:30:52.4589971Z ##[error]Process completed with exit code 1.
+import os, random, requests, datetime, pytz, sqlite3
+import alpaca_trade_api as tradeapi
+import matplotlib.pyplot as plt
+
+ALPACA_KEY = os.getenv("ALPACA_KEY")
+ALPACA_SECRET = os.getenv("ALPACA_SECRET")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT")
+DB_URL = os.getenv("DATABASE_URL")
+
+api = tradeapi.REST(ALPACA_KEY, ALPACA_SECRET, "https://paper-api.alpaca.markets")
+
+PHRASES = ["making bank baby 💸","getting to that paper 📈","checking stocks not flipping rocks","real ones invest","paper chasing","put your trust in that paper","real boss moves","real bosses sit back we don't talk. We just listen. 😎","clean money over here 🧼","first in my generation","who really want it","first you stack your paper then you make boss moves"]
+MORNING = "Here's how we did big Pimpin"
+
+try:
+    import psycopg2
+    conn = psycopg2.connect(DB_URL) if DB_URL else sqlite3.connect("trades.db")
+except:
+    conn = sqlite3.connect("trades.db")
+cur = conn.cursor()
+cur.execute("CREATE TABLE IF NOT EXISTS trades (time TEXT, symbol TEXT, side TEXT, qty REAL, price REAL, pnl REAL)")
+conn.commit()
+
+def safe_check():
+    try:
+        acct = api.get_account()
+        bp = float(acct.buying_power)
+        positions = api.list_positions()
+        if len(positions) >= 3: return False, "MAX"
+        if bp < 25: return False, "LOW"
+        return True, "OK"
+    except Exception as e:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": f"🚨 {str(e)[:80]}"})
+        return False, str(e)
+
+def make_chart():
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(6,3), facecolor='#0A0E14')
+    ax.set_facecolor('#0A0E14')
+    ax.plot([1000,1005,1002,1010], color='#00FF88', linewidth=2.5)
+    ax.axis('off')
+    path = '/tmp/chart.png'
+    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='#0A0E14')
+    plt.close()
+    return path
+
+def tg_send(text, photo=None):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    kb = {"inline_keyboard": [[{"text":"📊 Chart","callback_data":"c"},{"text":"💰 P&L","callback_data":"p"},{"text":"⏸️ Pause","callback_data":"x"},{"text":"▶️ Resume","callback_data":"r"}]]}
+    requests.post(url, json={"chat_id": TELEGRAM_CHAT, "text": text, "parse_mode": "Markdown", "reply_markup": kb})
+    if photo: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", data={"chat_id": TELEGRAM_CHAT}, files={"photo": open(photo,'rb')})
+
+def trade():
+    ok,_ = safe_check()
+    if not ok: return 0
+    acct = api.get_account()
+    equity = float(acct.equity)
+    for sym in ["SPY","QQQ","BTC/USD","ETH/USD"]:
+        try:
+            bars = api.get_bars(sym, "1Min", limit=5).df
+            if len(bars)<5: continue
+            if bars.close.iloc[-1]/bars.close.iloc[-5]-1 < -0.005:
+                qty = 1 if "/" not in sym else 0.001
+                api.submit_order(sym, qty, "buy", "market", "day")
+                cur.execute("INSERT INTO trades VALUES (?,?,?,?,?,?)", (datetime.datetime.now().isoformat(), sym, "BUY", float(qty), float(bars.close.iloc[-1]), 0))
+                conn.commit()
+                break
+        except: continue
+    return equity
+
+et = datetime.datetime.now(pytz.timezone('US/Eastern'))
+try:
+    if et.hour==8 and et.minute<3: tg_send(f"*{MORNING}*\n\n💵 Ready", make_chart())
+    elif et.hour in [16,22] and et.minute<6: tg_send(f"*{random.choice(PHRASES)}*\n\n💰 Checking...", make_chart())
+    else: trade()
+except Exception as e: tg_send(f"🚨 Crash: {str(e)[:100]}")
