@@ -2,8 +2,8 @@ name: Hedge Fund Bot 24/7
 
 on:
   schedule:
-    - cron: '*/5 13-20 * 1-5' # 5-min during market hours (9:30-16:00 ET = 13:30-20:00 UTC)
-    - cron: '*/30 * * *' # 30-min all other times
+    - cron: '*/5 13-20 * * 1-5'   # 5-min during market (Mon-Fri 9am-4pm ET)
+    - cron: '*/30 * * * *'         # 30-min all other times
   workflow_dispatch:
 
 jobs:
