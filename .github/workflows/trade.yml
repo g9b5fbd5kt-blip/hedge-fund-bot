@@ -29,4 +29,4 @@ jobs:
             trades.csv
             brain.json
             chart_*.png
-          retention-days: 90
+          retention-days: 90 
