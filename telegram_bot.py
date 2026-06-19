@@ -54,3 +54,20 @@ Reasoning:
 Decision: {decision}
 Next check: {next_run}"""
 send_telegram(msg)
+🤖 24/7 THINKING — {TICKER} ({asset_type})
+
+Session: {Extended/Regular/Crypto}
+Time ET: {now}
+
+Confidence: {82%}
+Signals:
+1. Technical: RSI {value} → {signal}
+2. News: {sentiment} ({source})
+3. Liquidity: {volume}x avg
+
+Decision: {BUY/SELL/WATCH}
+Order: {limit/market} {qty} @ ${price}
+Extended Hours: {True/False}
+Risk: Stop {x}, Target {y}
+GitHub mins used: {1,240/2,000}
+Next check: {in 5 min}
