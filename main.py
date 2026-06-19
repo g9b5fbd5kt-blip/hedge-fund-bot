@@ -1,4 +1,15 @@
-import os, time, requests, random
+import pytz
+from datetime import datetime
+
+now_et = datetime.now(pytz.timezone('US/Eastern'))
+market_open = now_et.replace(hour=9, minute=30) <= now_et <= now_et.replace(hour=16, minute=0) and now_et.weekday() < 5
+
+if market_open:
+    mode = "TRADE"
+    universe = ["AAPL","MSFT","NVDA"] # your stocks
+else:
+    mode = "RESEARCH"
+    universe = ["BTC/USD","ETH/USD"] # 24/7 assets, or set to []import os, time, requests, random
 from datetime import datetime, timezone
 
 KEY = os.getenv("ALPACA_KEY",""); SEC = os.getenv("ALPACA_SECRET","")
