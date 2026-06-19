@@ -139,6 +139,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:29:54.466020",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -259,6 +266,46 @@
           "score": 0,
           "price": 244.38999938964844,
           "reason": "Score 0/5 RSI 31"
+        }
+      ]
+    },
+    {
+      "time": "2026-06-19T17:29:54.466737",
+      "decisions": [
+        {
+          "symbol": "TSM",
+          "action": "HOLD",
+          "score": 4,
+          "price": 462.1199951171875,
+          "reason": "Score 4/5 RSI 62"
+        },
+        {
+          "symbol": "TSLA",
+          "action": "HOLD",
+          "score": 2,
+          "price": 400.489990234375,
+          "reason": "Score 2/5 RSI 39"
+        },
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 379.3999938964844,
+          "reason": "Score 1/5 RSI 19"
+        },
+        {
+          "symbol": "BTC-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 62851.578125,
+          "reason": "Score 1/5 RSI 47"
+        },
+        {
+          "symbol": "AVGO",
+          "action": "HOLD",
+          "score": 2,
+          "price": 411.3500061035156,
+          "reason": "Score 2/5 RSI 43"
         }
       ]
     }
