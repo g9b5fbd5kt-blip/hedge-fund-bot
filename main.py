@@ -26,10 +26,14 @@ day_pct = (day_change / last_equity * 100) if last_equity else 0
 
 positions = api.list_positions()
 holdings_text = ""
-for p in positions[:5]:
-    pl = float(p.unrealized_intraday_plpc)*100
-    arrow = "▲" if pl>=0 else "▼"
-    holdings_text += f"- {p.symbol}  {p.qty}  {arrow} {abs(pl):.1f}%\n"
+for p in positions[:3]:
+    sym = p.symbol
+    try:
+        start = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+        bars = api.get_bars(sym, TimeFrame.Day, start=start, feed='iex').df.tail(30)
+        if bars.empty or len(bars) < 20:
+            continue
+        # rest of your code...
 if not holdings_text: holdings_text = "- Cash only\n"
 
 send_tg(f"""{opener}
