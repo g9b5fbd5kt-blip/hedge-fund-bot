@@ -56,10 +56,22 @@ try:
     acct = requests.get(f"{BASE}/v2/account", headers=HDR, timeout=10).json()
     equity = safe_float(acct.get('equity'), 102788); cash = safe_float(acct.get('cash'), -114599)
     pos_raw = requests.get(f"{BASE}/v2/positions", headers=HDR, timeout=10).json()
-    positions = [{"symbol":p['symbol'],"qty":float(p['qty']),"price":safe_float(p['current_price']),"value":safe_float(p['market_value']),"pnl":safe_float(p['unrealized_plpc'])*100} for p in pos_raw]
+    positions = []
+    for p in pos_raw:
+        positions.append({
+            "symbol": p['symbol'],
+            "qty": float(p['qty']),
+            "available": float(p.get('qty_available', p['qty'])),
+            "price": safe_float(p['current_price']),
+            "value": safe_float(p['market_value']),
+            "pnl": safe_float(p['unrealized_plpc'])*100
+        })
 except:
     equity, cash = 102788, -114599
-    positions = [{"symbol":"NVDA","qty":965,"price":210.69,"value":203315,"pnl":1.4},{"symbol":"QQQ","qty":19,"price":740.62,"value":14072,"pnl":0.6}]
+    positions = [
+        {"symbol":"NVDA","qty":965,"available":1,"price":210.69,"value":203315,"pnl":1.4},
+        {"symbol":"QQQ","qty":19,"available":13,"price":740.62,"value":14072,"pnl":0.6}
+    ]
 
 # ===== VERIFY PENDING =====
 verified = []; errors = []
@@ -97,8 +109,6 @@ kelly = max(0.05, min(0.25, win_rate - (1-win_rate)*(avg_l/avg_w if avg_w else 1
 decisions = []; executed = []; now = datetime.now()
 recent = {t['symbol'] for t in trades if datetime.fromisoformat(t['time']) > now - timedelta(minutes=15)}
 pending_syms = {p['symbol'] for p in memory["pending_orders"]}
-
-# ===== FORCED RISK REDUCTION =====
 risk_override = tech_exp > 200
 
 for sym, td in market.items():
@@ -106,39 +116,37 @@ for sym, td in market.items():
     pos = next((p for p in positions if p['symbol']==sym), None)
     action = "HOLD"; reason = f"Score {score}/5 RSI {td['rsi']:.0f}"
 
-    # Bypass cooldown if risk override
     if not risk_override and (sym in pending_syms or sym in recent):
         reason += " - cooldown"; decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason}); continue
 
     if pos and (score <=2 or tech_exp>55 or risk_override):
-        # Sell in 100-share chunks for risk override
-        qty = 100 if risk_override else max(1, int(pos['qty']*0.2))
-        qty = min(qty, int(pos['qty']))
-        action = "SELL"
-        try:
-            r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"market","time_in_force":"day"}, timeout=5)
-            resp = r.json()
-            if r.status_code == 200 and 'id' in resp:
-                memory["pending_orders"].append({"id":resp['id'],"symbol":sym,"side":"sell","qty":qty,"price":td['price'],"time":now.isoformat()})
-                executed.append(f"SELL {qty} {sym}")
-                reason += f" - risk trim {qty}"
-            else:
-                errors.append(f"{sym} SELL rejected: {resp.get('message','unknown')}")
-                reason += " - rejected"
-        except Exception as e:
-            errors.append(f"{sym} error: {str(e)[:50]}")
+        available = pos.get('available', pos['qty'])
+        if available < 1:
+            reason += f" - no shares free ({available:.0f}/{pos['qty']:.0f})"
+            errors.append(f"{sym} locked: {available:.0f} available of {pos['qty']:.0f}")
+        else:
+            qty = min(int(available), 100 if risk_override else max(1, int(pos['qty']*0.2)))
+            action = "SELL"
+            try:
+                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"market","time_in_force":"day"}, timeout=5)
+                resp = r.json()
+                if r.status_code == 200 and 'id' in resp:
+                    memory["pending_orders"].append({"id":resp['id'],"symbol":sym,"side":"sell","qty":qty,"price":td['price'],"time":now.isoformat()})
+                    executed.append(f"SELL {qty} {sym}"); reason += f" - selling {qty} free"
+                else:
+                    errors.append(f"{sym} SELL rejected: {resp.get('message','unknown')}")
+            except Exception as e:
+                errors.append(f"{sym} error: {str(e)[:40]}")
     elif score >=4 and cash > 5000 and not pos and not risk_override:
         size = int((equity*kelly*0.1)/td['price']) if td['price']>0 else 0
         if size>0:
             action = "BUY"
             try:
                 r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":size,"side":"buy","type":"market","time_in_force":"day"}, timeout=5)
-                resp = r.json()
-                if 'id' in resp:
-                    memory["pending_orders"].append({"id":resp['id'],"symbol":sym,"side":"buy","qty":size,"price":td['price'],"time":now.isoformat()})
+                if 'id' in r.json():
+                    memory["pending_orders"].append({"id":r.json()['id'],"symbol":sym,"side":"buy","qty":size,"price":td['price'],"time":now.isoformat()})
                     executed.append(f"BUY {size} {sym}")
-            except Exception as e:
-                errors.append(f"{sym} BUY error")
+            except: pass
 
     decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason})
 
@@ -154,7 +162,7 @@ pimpin ain't easy 😎
 💵 Cash: ${cash:,.0f}
 
 🎯 POSITIONS ({len(positions)})
-""" + "\n".join([f"- {p['symbol']} {p['qty']:.0f} @ ${p['price']:.2f}" for p in positions[:4]]) + f"""
+""" + "\n".join([f"- {p['symbol']} {p['qty']:.0f} ({p['available']:.0f} free) @ ${p['price']:.2f}" for p in positions[:4]]) + f"""
 
 🧠 BRAIN
 - Scanning: {len(universe)} | Risk Override: {'ON' if risk_override else 'OFF'}
@@ -176,9 +184,9 @@ if token and chat:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id":chat,"text":msg})
     plt.figure(figsize=(11,5.5)); eq=[p.get('equity',equity) for p in memory['patterns']]
     plt.plot(eq, linewidth=2.5); plt.fill_between(range(len(eq)), eq, alpha=0.2)
-    plt.title(f'Equity + Risk Override - ${equity:,.0f}', fontweight='bold'); plt.grid(True, alpha=0.3)
+    plt.title(f'Equity + Free Shares - ${equity:,.0f}', fontweight='bold'); plt.grid(True, alpha=0.3)
     plt.tight_layout(); plt.savefig('chart.png', dpi=150); plt.close()
     with open('chart.png','rb') as f:
-        requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id":chat,"caption":f"Risk {'OVERRIDE' if risk_override else 'Normal'} | {len(errors)} errors"}, files={"photo":f})
+        requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id":chat,"caption":f"Available: NVDA {positions[0]['available']:.0f}/{positions[0]['qty']:.0f}"}, files={"photo":f})
 
 save_memory(memory)
