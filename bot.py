@@ -17,8 +17,7 @@ def save_memory(data):
 
 memory = load_memory()
 
-# ===== YOUR EXISTING BOT LOGIC GOES HERE =====
-# (I'm keeping your current positions/output exactly the same)
+# ===== BOT LOGIC =====
 equity = 102788
 cash = -114599
 positions = [
@@ -26,7 +25,6 @@ positions = [
     {"symbol": "QQQ", "qty": 19, "price": 736.37, "pnl": 0.6}
 ]
 
-# Add pattern each run
 memory["patterns"].append({
     "time": datetime.now().isoformat(),
     "nvda": 207.88,
@@ -63,12 +61,10 @@ pimpin ain't easy 😎
 ────────────────────
 Next scan: 5 min | Mode: PAPER"""
 
-# Send using YOUR existing secret names
 token = os.getenv("TELEGRAM_TOKEN")
-chat_id = os.getenv("TELEGRAM_CHAT_ID")
+chat_id = os.getenv("TELEGRAM_CHAT")
 if token and chat_id:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                   json={"chat_id": chat_id, "text": message})
 
-# Save memory
 save_memory(memory)
