@@ -47,7 +47,6 @@ def get_tech(sym, fb=100):
 
 memory = load_memory()
 
-# ===== ALPACA =====
 KEY = os.getenv("ALPACA_KEY"); SEC = os.getenv("ALPACA_SECRET")
 HDR = {"APCA-API-KEY-ID": KEY, "APCA-API-SECRET-KEY": SEC}
 BASE = "https://paper-api.alpaca.markets"
@@ -56,44 +55,35 @@ try:
     acct = requests.get(f"{BASE}/v2/account", headers=HDR, timeout=10).json()
     equity = safe_float(acct.get('equity'), 102788); cash = safe_float(acct.get('cash'), -114599)
     pos_raw = requests.get(f"{BASE}/v2/positions", headers=HDR, timeout=10).json()
-    positions = []
-    for p in pos_raw:
-        positions.append({
-            "symbol": p['symbol'],
-            "qty": float(p['qty']),
-            "available": float(p.get('qty_available', p['qty'])),
-            "price": safe_float(p['current_price']),
-            "value": safe_float(p['market_value']),
-            "pnl": safe_float(p['unrealized_plpc'])*100
-        })
+    positions = [{"symbol":p['symbol'],"qty":float(p['qty']),"available":float(p.get('qty_available',p['qty'])),"price":safe_float(p['current_price']),"value":safe_float(p['market_value']),"pnl":safe_float(p['unrealized_plpc'])*100} for p in pos_raw]
 except:
     equity, cash = 102788, -114599
-    positions = [
-        {"symbol":"NVDA","qty":965,"available":1,"price":210.69,"value":203315,"pnl":1.4},
-        {"symbol":"QQQ","qty":19,"available":13,"price":740.62,"value":14072,"pnl":0.6}
-    ]
+    positions = [{"symbol":"NVDA","qty":965,"available":0,"price":210.69,"value":203315,"pnl":1.4},{"symbol":"QQQ","qty":19,"available":0,"price":740.62,"value":14072,"pnl":0.6}]
 
-# ===== VERIFY PENDING =====
-verified = []; errors = []
+# ===== VERIFY AND CANCEL STALE =====
+verified = []; errors = []; now = datetime.now()
 for po in memory["pending_orders"][:]:
     try:
+        age = now - datetime.fromisoformat(po['time'])
         o = requests.get(f"{BASE}/v2/orders/{po['id']}", headers=HDR, timeout=5).json()
         if o.get('status') in ['filled','partially_filled']:
             fq = safe_float(o.get('filled_qty'),0); fp = safe_float(o.get('filled_avg_price'), po['price'])
             pnl = (fp - po['price'])/po['price']*100 * (-1 if po['side']=='sell' else 1)
-            memory["trades"].append({"time":datetime.now().isoformat(),"symbol":po['symbol'],"side":po['side'],"qty":fq,"price":fp,"pnl":pnl})
-            memory["pending_orders"].remove(po); verified.append(f"{po['side'].upper()} {fq:.0f} {po['symbol']} @ ${fp:.2f}")
-    except Exception as e:
-        errors.append(f"Verify {po['symbol']} failed")
+            memory["trades"].append({"time":now.isoformat(),"symbol":po['symbol'],"side":po['side'],"qty":fq,"price":fp,"pnl":pnl})
+            memory["pending_orders"].remove(po); verified.append(f"{po['side'].upper()} {fq:.0f} {po['symbol']}")
+        elif age > timedelta(minutes=10):
+            requests.delete(f"{BASE}/v2/orders/{po['id']}", headers=HDR, timeout=5)
+            memory["pending_orders"].remove(po)
+            errors.append(f"Cancelled stale {po['symbol']} order ({age.seconds//60}m old)")
+    except: pass
 
 # ===== SCAN =====
 universe = list(set([p['symbol'] for p in positions] + ['NVDA','QQQ','SPY','AAPL','MSFT','AMD','TSM','AVGO','META','GOOGL','AMZN','TSLA','BTC-USD','ETH-USD']))
 market = {s: get_tech(s, next((p['price'] for p in positions if p['symbol']==s), 100)) for s in universe}
 
-memory["patterns"].append({"time":datetime.now().isoformat(),"nvda":market['NVDA']['price'],"qqq":market['QQQ']['price'],"equity":equity,"cash":cash})
+memory["patterns"].append({"time":now.isoformat(),"nvda":market['NVDA']['price'],"qqq":market['QQQ']['price'],"equity":equity,"cash":cash})
 memory["patterns"] = memory["patterns"][-200:]; memory["last_equity"] = equity
 
-# ===== BRAIN =====
 tech_syms = ['NVDA','QQQ','AAPL','MSFT','AMD','TSM','AVGO','SMH','SOXL','SPY']
 tech_val = sum(p['value'] for p in positions if p['symbol'] in tech_syms)
 tech_exp = tech_val / equity * 100 if equity else 0
@@ -106,7 +96,7 @@ avg_w = np.mean([t['pnl'] for t in wins]) if wins else 2.0
 avg_l = abs(np.mean([t['pnl'] for t in trades if t.get('pnl',0)<0])) if len(trades)>len(wins) else 1.5
 kelly = max(0.05, min(0.25, win_rate - (1-win_rate)*(avg_l/avg_w if avg_w else 1)))
 
-decisions = []; executed = []; now = datetime.now()
+decisions = []; executed = []
 recent = {t['symbol'] for t in trades if datetime.fromisoformat(t['time']) > now - timedelta(minutes=15)}
 pending_syms = {p['symbol'] for p in memory["pending_orders"]}
 risk_override = tech_exp > 200
@@ -114,79 +104,46 @@ risk_override = tech_exp > 200
 for sym, td in market.items():
     score = sum([td['price']>td['sma20'], td['sma20']>td['sma50'], 35<td['rsi']<65, td['macd_bull'], tech_exp<50])
     pos = next((p for p in positions if p['symbol']==sym), None)
-    action = "HOLD"; reason = f"Score {score}/5 RSI {td['rsi']:.0f}"
+    action = "HOLD"; reason = f"Score {score}/5"
 
     if not risk_override and (sym in pending_syms or sym in recent):
         reason += " - cooldown"; decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason}); continue
 
-    if pos and (score <=2 or tech_exp>55 or risk_override):
-        available = pos.get('available', pos['qty'])
-        if available < 1:
-            reason += f" - no shares free ({available:.0f}/{pos['qty']:.0f})"
-            errors.append(f"{sym} locked: {available:.0f} available of {pos['qty']:.0f}")
-        else:
-            qty = min(int(available), 100 if risk_override else max(1, int(pos['qty']*0.2)))
+    if pos and (tech_exp>55 or risk_override):
+        available = pos.get('available', 0)
+        if available >= 1:
+            qty = int(min(available, 5)) # smaller chunks for stuck market
             action = "SELL"
             try:
-                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"market","time_in_force":"day"}, timeout=5)
+                # Use limit order at bid to force fill in paper
+                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"limit","limit_price":round(td['price']*0.99,2),"time_in_force":"day"}, timeout=5)
                 resp = r.json()
-                if r.status_code == 200 and 'id' in resp:
+                if 'id' in resp:
                     memory["pending_orders"].append({"id":resp['id'],"symbol":sym,"side":"sell","qty":qty,"price":td['price'],"time":now.isoformat()})
-                    executed.append(f"SELL {qty} {sym}"); reason += f" - selling {qty} free"
-                else:
-                    errors.append(f"{sym} SELL rejected: {resp.get('message','unknown')}")
+                    executed.append(f"SELL {qty} {sym} limit")
             except Exception as e:
-                errors.append(f"{sym} error: {str(e)[:40]}")
-    elif score >=4 and cash > 5000 and not pos and not risk_override:
-        size = int((equity*kelly*0.1)/td['price']) if td['price']>0 else 0
-        if size>0:
-            action = "BUY"
-            try:
-                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":size,"side":"buy","type":"market","time_in_force":"day"}, timeout=5)
-                if 'id' in r.json():
-                    memory["pending_orders"].append({"id":r.json()['id'],"symbol":sym,"side":"buy","qty":size,"price":td['price'],"time":now.isoformat()})
-                    executed.append(f"BUY {size} {sym}")
-            except: pass
+                errors.append(f"{sym} order fail")
 
     decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason})
 
-memory["decisions"].append({"time":now.isoformat(),"decisions":decisions[:5]}); memory["decisions"] = memory["decisions"][-50:]
+memory["decisions"] = (memory["decisions"] + [{"time":now.isoformat(),"decisions":decisions[:5]}])[-50:]
 
-# ===== TELEGRAM =====
 top = sorted(decisions, key=lambda x: x['score'], reverse=True)[:3]
 msg = f"""🔥 HEDGE FUND COMMAND CENTER
 pimpin ain't easy 😎
 ────────────────────
-💰 ${equity:,.0f} ({day_chg:+.2f}% today)
-📊 Trades: {len(trades)} | Win: {win_rate*100:.0f}% | Kelly: {kelly*100:.1f}%
-💵 Cash: ${cash:,.0f}
-
-🎯 POSITIONS ({len(positions)})
-""" + "\n".join([f"- {p['symbol']} {p['qty']:.0f} ({p['available']:.0f} free) @ ${p['price']:.2f}" for p in positions[:4]]) + f"""
-
-🧠 BRAIN
-- Scanning: {len(universe)} | Risk Override: {'ON' if risk_override else 'OFF'}
-- Pending: {len(memory['pending_orders'])}
-
-🧮 TOP
-""" + "\n".join([f"• {d['symbol']}: {d['action']} ({d['reason']})" for d in top]) + f"""
-{chr(10)+'✅ FILLED:'+chr(10)+'• ' + chr(10)+'• '.join(verified) if verified else ''}
-{chr(10)+'⚡ SENT:'+chr(10)+'• ' + chr(10)+'• '.join(executed) if executed else ''}
-{chr(10)+'❌ ERRORS:'+chr(10)+'• ' + chr(10)+'• '.join(errors[:3]) if errors else ''}
-
-🛡️ RISK
-- Tech: {tech_exp:.1f}% (target <45%)
-────────────────────
-Next: 5 min | Mode: PAPER AUTO"""
+💰 ${equity:,.0f} | Cash: ${cash:,.0f}
+📊 Trades: {len(trades)} | Kelly: {kelly*100:.1f}%
+🎯 POSITIONS: NVDA {positions[0]['qty']:.0f}({positions[0]['available']:.0f} free) QQQ {positions[1]['qty']:.0f}({positions[1]['available']:.0f} free)
+🧠 Risk Override: {'ON' if risk_override else 'OFF'} | Pending: {len(memory['pending_orders'])}
+🧮 TOP: {', '.join([f"{d['symbol']} {d['action']}" for d in top])}
+{chr(10)+'✅ '+chr(10).join(verified) if verified else ''}
+{chr(10)+'⚡ '+chr(10).join(executed) if executed else ''}
+{chr(10)+'❌ '+chr(10).join(errors[:2]) if errors else ''}
+🛡️ Tech: {tech_exp:.1f}%"""
 
 token = os.getenv("TELEGRAM_TOKEN"); chat = os.getenv("TELEGRAM_CHAT")
 if token and chat:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id":chat,"text":msg})
-    plt.figure(figsize=(11,5.5)); eq=[p.get('equity',equity) for p in memory['patterns']]
-    plt.plot(eq, linewidth=2.5); plt.fill_between(range(len(eq)), eq, alpha=0.2)
-    plt.title(f'Equity + Free Shares - ${equity:,.0f}', fontweight='bold'); plt.grid(True, alpha=0.3)
-    plt.tight_layout(); plt.savefig('chart.png', dpi=150); plt.close()
-    with open('chart.png','rb') as f:
-        requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id":chat,"caption":f"Available: NVDA {positions[0]['available']:.0f}/{positions[0]['qty']:.0f}"}, files={"photo":f})
 
 save_memory(memory)
