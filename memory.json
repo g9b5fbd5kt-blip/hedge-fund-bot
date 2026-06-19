@@ -195,6 +195,13 @@
       "qqq": 740.62,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:55:31.377974",
+      "nvda": 210.69,
+      "qqq": 740.62,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -637,7 +644,64 @@
           "reason": "Score 2/5"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T17:55:31.377974",
+      "decisions": [
+        {
+          "symbol": "TSLA",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "TSM",
+          "action": "HOLD",
+          "score": 2,
+          "price": 100,
+          "reason": "Score 2/5"
+        },
+        {
+          "symbol": "NVDA",
+          "action": "SELL",
+          "score": 1,
+          "price": 210.69,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5"
+        }
+      ]
     }
   ],
-  "pending_orders": []
+  "pending_orders": [
+    {
+      "id": "95e1a540-2b4f-4d15-8821-8bb087c644bb",
+      "symbol": "NVDA",
+      "side": "sell",
+      "qty": 1,
+      "price": 210.69,
+      "time": "2026-06-19T17:55:31.377974"
+    },
+    {
+      "id": "f3e10a6d-c4f5-4319-8816-c8680eaf7d95",
+      "symbol": "QQQ",
+      "side": "sell",
+      "qty": 5,
+      "price": 740.62,
+      "time": "2026-06-19T17:55:31.377974"
+    }
+  ]
 }
