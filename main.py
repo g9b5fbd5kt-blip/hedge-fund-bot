@@ -1,5 +1,5 @@
-import os, json, time, csv, random
-from datetime import datetime
+import os, json, time, csv
+from datetime import datetime, timezone
 import pytz
 import pandas as pd
 import numpy as np
@@ -16,6 +16,7 @@ TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TG_CHAT = os.getenv("TELEGRAM_CHAT")
 
 ET = pytz.timezone('US/Eastern')
+LAST_PING_FILE = "last_ping.txt"
 
 HUSTLE_MESSAGES = [
     "pimpin ain't easy 😎",
@@ -49,19 +50,32 @@ def load_brain():
         with open(BRAIN_FILE, 'r') as f:
             brain = json.load(f)
             brain.setdefault("memory", {})
-            brain.setdefault("stats", {"wins":0, "losses":0, "avg_win":0.02, "avg_loss":0.015})
+            brain.setdefault("stats", {"wins":0, "losses":0, "avg_win":0.02, "avg_loss":0.015, "total_pnl":0})
             brain.setdefault("mode", "paper")
             brain.setdefault("paused", False)
             brain.setdefault("last_update_id", 0)
+            brain.setdefault("start_equity", 100000)
             return brain
     except:
         return {"trades":0, "wins":0, "accuracy":0, "day_start_equity":100000, "day":"", 
-                "memory":{}, "stats":{"wins":0,"losses":0,"avg_win":0.02,"avg_loss":0.015},
-                "mode":"paper", "paused":False, "last_update_id":0}
+                "memory":{}, "stats":{"wins":0,"losses":0,"avg_win":0.02,"avg_loss":0.015,"total_pnl":0},
+                "mode":"paper", "paused":False, "last_update_id":0, "start_equity":100000}
 
 def save_brain(brain):
     with open(BRAIN_FILE, 'w') as f:
         json.dump(brain, f)
+
+def check_heartbeat():
+    try:
+        if os.path.exists(LAST_PING_FILE):
+            with open(LAST_PING_FILE, 'r') as f:
+                last = float(f.read())
+            if time.time() - last > 900:
+                send_tg("🚨 ALERT: Bot missed 3+ cycles - check scheduler")
+    except:
+        pass
+    with open(LAST_PING_FILE, 'w') as f:
+        f.write(str(time.time()))
 
 def check_telegram_commands(brain):
     try:
@@ -79,31 +93,23 @@ def check_telegram_commands(brain):
                 continue
                 
             if "/live" in text:
-                brain["mode"] = "live"
-                send_tg("🚀 LIVE MODE REQUESTED\n⚠️ No funded account detected - staying in paper\nAdd live keys to enable")
-                brain["mode"] = "paper"  # Force paper until funded
+                brain["mode"] = "paper"
+                send_tg("🚀 LIVE MODE REQUESTED\n⚠️ No funded account - staying in paper")
             elif "/paper" in text:
                 brain["mode"] = "paper"
-                send_tg("📝 PAPER MODE ACTIVE\nSafe trading enabled")
+                send_tg("📝 PAPER MODE ACTIVE")
             elif "/pause" in text:
                 brain["paused"] = True
-                send_tg("⏸️ BOT PAUSED\nUse /resume to continue")
+                send_tg("⏸️ BOT PAUSED")
             elif "/resume" in text:
                 brain["paused"] = False
                 send_tg("▶️ BOT RESUMED")
             elif "/status" in text:
-                mode = brain["mode"].upper()
-                paused = "PAUSED" if brain["paused"] else "ACTIVE"
                 trades = brain["stats"]["wins"] + brain["stats"]["losses"]
                 win_rate = brain["stats"]["wins"] / max(trades, 1) * 100
                 memory = sum(len(v) for v in brain["memory"].values())
-                status = f"📊 STATUS\nMode: {mode} ({paused})\nTrades: {trades}\nWin Rate: {win_rate:.1f}%\nMemory: {memory} patterns\nKelly: {'Active' if trades >= 20 else 'Learning'}"
+                status = f"📊 STATUS\nMode: {brain['mode'].upper()}\nTrades: {trades}\nWin Rate: {win_rate:.1f}%\nMemory: {memory} patterns"
                 send_tg(status)
-            elif "/memory" in text:
-                total = sum(len(v) for v in brain["memory"].values())
-                send_tg(f"🧠 MEMORY BANK\n{total} market patterns stored\nLearning from each trade")
-            elif "/risk" in text:
-                send_tg(f"🛡️ RISK GUARDS\nKill Switch: -2%\nMax Tech: 40%\nKelly: Half-size\nCorrelation: Active")
         
         save_brain(brain)
     except:
@@ -113,12 +119,11 @@ def check_telegram_commands(brain):
 def send_tg(text):
     try:
         requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
-                     json={"chat_id": TG_CHAT, "text": text}, timeout=5)
+                     json={"chat_id": TG_CHAT, "text": text, "parse_mode": "Markdown"}, timeout=5)
     except:
         pass
 
 def get_api_client(mode):
-    # Always use paper until funded
     return REST(API_KEY, API_SECRET, "https://paper-api.alpaca.markets")
 
 def get_bars(symbol, timeframe="1Min", limit=1000):
@@ -150,11 +155,9 @@ def get_bars(symbol, timeframe="1Min", limit=1000):
 
 def update_memory_outcome(brain, symbol, outcome, pnl):
     if symbol in brain["memory"] and brain["memory"][symbol]:
-        # Update most recent memory entry
         brain["memory"][symbol][-1]["outcome"] = outcome
         brain["memory"][symbol][-1]["pnl"] = pnl
         
-        # Update stats
         if outcome == "win":
             brain["stats"]["wins"] += 1
             brain["stats"]["avg_win"] = (brain["stats"]["avg_win"] * (brain["stats"]["wins"]-1) + pnl) / brain["stats"]["wins"]
@@ -162,6 +165,7 @@ def update_memory_outcome(brain, symbol, outcome, pnl):
             brain["stats"]["losses"] += 1
             brain["stats"]["avg_loss"] = (brain["stats"]["avg_loss"] * (brain["stats"]["losses"]-1) + abs(pnl)) / brain["stats"]["losses"]
         
+        brain["stats"]["total_pnl"] += pnl
         save_brain(brain)
 
 def get_memory_adjusted_confidence(brain, symbol, features):
@@ -169,7 +173,7 @@ def get_memory_adjusted_confidence(brain, symbol, features):
         return 0
     
     similar = []
-    for mem in brain["memory"][symbol][-50:]:  # Last 50 only
+    for mem in brain["memory"][symbol][-50:]:
         if not mem.get("outcome"):
             continue
         rsi_diff = abs(mem.get("rsi2", 50) - features["rsi2"])
@@ -202,33 +206,18 @@ def calculate_kelly_size(brain, base_size):
     kelly_half = max(0, min(kelly * 0.5, base_size * 1.5))
     return kelly_half if kelly_half > 0 else base_size
 
-def check_correlation_risk(positions, new_symbol):
-    tech_symbols = ["NVDA", "QQQ", "SPY"]
-    if new_symbol not in tech_symbols:
-        return True
-    
-    tech_exposure = sum(float(p.market_value) for p in positions if p.symbol in tech_symbols)
-    total_equity = sum(float(p.market_value) for p in positions) + 100000  # Approx
-    
-    if tech_exposure / total_equity > MAX_TECH_EXPOSURE:
-        return False
-    return True
-
 def hybrid_signal(symbol, brain, api):
-    # Get intraday data for live signals
     df_min = get_bars(symbol, "1Min", 500)
     df_day = get_bars(symbol, "1Day", 250)
     
     if df_day.empty or len(df_day) < 50:
         return 60, "Neutral", "Insufficient data", {"rsi2": 50}
     
-    # Use daily for trend, intraday for timing
     df = df_day.copy()
     df['sma200'] = df['close'].rolling(200).mean()
     df['ema50'] = df['close'].ewm(span=50).mean()
     df['ema200'] = df['close'].ewm(span=200).mean()
     
-    # RSI2 on intraday if available
     if not df_min.empty and len(df_min) > 10:
         delta = df_min['close'].diff()
         gain = delta.clip(lower=0).rolling(2).mean()
@@ -243,12 +232,10 @@ def hybrid_signal(symbol, brain, api):
         current_rsi2 = float(rsi2.iloc[-1])
     
     last = df.iloc[-1]
-    prev = df.iloc[-2]
     
     confidence = 50
     reasons = []
     
-    # VWAP for intraday
     if not df_min.empty:
         vwap = (df_min['close'] * df_min['volume']).sum() / df_min['volume'].sum()
         if last['close'] > vwap:
@@ -271,7 +258,6 @@ def hybrid_signal(symbol, brain, api):
         confidence -= 15
         reasons.append("overbought")
     
-    # Memory boost
     features = {"rsi2": current_rsi2, "price": float(last['close'])}
     memory_boost = get_memory_adjusted_confidence(brain, symbol, features)
     confidence += memory_boost
@@ -283,7 +269,6 @@ def hybrid_signal(symbol, brain, api):
     
     metrics = {"rsi2": round(current_rsi2, 1), "sma200": round(float(sma200), 2)}
     
-    # Store in memory
     if symbol not in brain["memory"]:
         brain["memory"][symbol] = []
     brain["memory"][symbol].append({
@@ -327,7 +312,21 @@ def generate_dark_chart(symbol, confidence, signal, api):
     plt.close()
     return filename
 
+def calculate_performance_metrics(brain, equity):
+    total_trades = brain["stats"]["wins"] + brain["stats"]["losses"]
+    win_rate = brain["stats"]["wins"] / max(total_trades, 1) * 100
+    total_pnl = brain["stats"]["total_pnl"]
+    all_time_return = (equity - brain["start_equity"]) / brain["start_equity"] * 100
+    
+    return {
+        "win_rate": win_rate,
+        "total_trades": total_trades,
+        "total_pnl": total_pnl,
+        "all_time_return": all_time_return
+    }
+
 def main():
+    check_heartbeat()
     brain = load_brain()
     brain = check_telegram_commands(brain)
     
@@ -339,19 +338,18 @@ def main():
     try:
         account = api.get_account()
         equity = float(account.equity)
+        cash = float(account.cash)
         positions = api.list_positions()
     except Exception as e:
         send_tg(f"❌ API Error: {str(e)[:50]}")
         return
     
-    # Update memory with outcomes
     for pos in positions:
         pnl = float(pos.unrealized_plpc)
-        if abs(pnl) > 0.015:  # 1.5% move
+        if abs(pnl) > 0.015:
             outcome = "win" if pnl > 0 else "loss"
             update_memory_outcome(brain, pos.symbol, outcome, pnl)
     
-    # Kill switch
     today = datetime.now(ET).date().isoformat()
     if brain.get("day") != today:
         brain["day"] = today
@@ -361,29 +359,53 @@ def main():
         return
     
     day_change = ((equity - brain["day_start_equity"]) / brain["day_start_equity"] * 100)
-    header = random.choice(HUSTLE_MESSAGES)
+    perf = calculate_performance_metrics(brain, equity)
+    header = HUSTLE_MESSAGES[int(time.time()) % len(HUSTLE_MESSAGES)]
     
-    msg = f"{header}\n\n────────────────────\n"
-    msg += f"💰 ${equity:,.0f} ({day_change:+.1f}%)\n"
+    msg = f"🔥 *HEDGE FUND COMMAND CENTER*\n"
+    msg += f"_{header}_\n"
+    msg += f"────────────────────\n"
+    msg += f"💰 *${equity:,.0f}* ({day_change:+.1f}% today)\n"
+    msg += f"📊 All-Time: {perf['all_time_return']:+.1f}% | Win: {perf['win_rate']:.0f}% | Trades: {perf['total_trades']}\n"
+    msg += f"💵 Cash: ${cash:,.0f}\n\n"
     
-    kelly = calculate_kelly_size(brain, BASE_STOCK_SIZE)
-    if kelly > BASE_STOCK_SIZE * 1.1:
-        msg += f"🔥 Kelly: {kelly:.1%}\n"
-    
-    msg += f"\nHoldings\n"
+    msg += f"*🎯 ACTIVE POSITIONS ({len(positions)})*\n"
     for pos in positions:
         pnl = float(pos.unrealized_plpc) * 100
         arrow = "▲" if pnl >= 0 else "▼"
-        msg += f"- {pos.symbol} {int(float(pos.qty))} {arrow} {abs(pnl):.1f}%\n"
+        entry = float(pos.avg_entry_price)
+        msg += f"- {pos.symbol} {int(float(pos.qty))} @ ${entry:.2f} {arrow} {abs(pnl):.1f}%\n"
     if not positions:
         msg += "- None\n"
-    msg += "────────────────────"
+    
+    msg += f"\n*💎 CRYPTO WATCH*\n"
+    for crypto in WATCHLIST["crypto"]:
+        try:
+            conf, signal, _, metrics = hybrid_signal(crypto, brain, api)
+            emoji = "🟢" if conf >= 70 else "🟡" if conf >= 60 else "🔴"
+            msg += f"- {crypto.replace('/USD','')}: {emoji} {conf}% {signal}\n"
+        except:
+            msg += f"- {crypto.replace('/USD','')}: --\n"
+    
+    msg += f"\n*🧠 BRAIN STATUS*\n"
+    memory_count = sum(len(v) for v in brain["memory"].values())
+    kelly = calculate_kelly_size(brain, BASE_STOCK_SIZE)
+    msg += f"- Memory: {memory_count} patterns\n"
+    msg += f"- Kelly: {kelly:.1%} sizing\n"
+    msg += f"- Learning: {'ACTIVE' if perf['total_trades'] >= 20 else 'WARMING UP'}\n"
+    
+    tech_exposure = sum(float(p.market_value) for p in positions if p.symbol in ["NVDA","QQQ","SPY"])
+    tech_pct = tech_exposure / equity * 100 if equity > 0 else 0
+    msg += f"\n*🛡️ RISK GUARD*\n"
+    msg += f"- Tech exposure: {tech_pct:.0f}% (limit 40%)\n"
+    msg += f"- Daily loss: {day_change:.1f}% (kill at -2%)\n"
+    msg += f"────────────────────\n"
+    msg += f"Next scan: 5 min | Mode: {brain['mode'].upper()}"
     
     send_tg(msg)
-    time.sleep(1)
+    time.sleep(2)
     
-    # Send charts
-    for pos in positions[:3]:  # Limit to 3 to avoid rate limits
+    for pos in positions[:2]:
         try:
             conf, signal, _, metrics = hybrid_signal(pos.symbol, brain, api)
             chart = generate_dark_chart(pos.symbol, conf, signal, api)
