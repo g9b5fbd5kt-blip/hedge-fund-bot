@@ -2,7 +2,8 @@ name: Hedge Fund Bot 24/7
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 13-20 * 1-5' # 5-min during market hours (9:30-16:00 ET = 13:30-20:00 UTC)
+    - cron: '*/30 * * *' # 30-min all other times
   workflow_dispatch:
 
 jobs:
@@ -29,4 +30,4 @@ jobs:
             trades.csv
             brain.json
             chart_*.png
-          retention-days: 90 
+          retention-days: 90
