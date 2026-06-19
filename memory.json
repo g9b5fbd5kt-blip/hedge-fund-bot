@@ -132,6 +132,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:26:19.073124",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -214,6 +221,47 @@
           "reason": "Score 1/5, RSI 19"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T17:26:19.073791",
+      "decisions": [
+        {
+          "symbol": "AMD",
+          "action": "HOLD",
+          "score": 4,
+          "price": 537.3699951171875,
+          "reason": "Score 4/5 RSI 53"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1694.9000244140625,
+          "reason": "Score 1/5 RSI 45"
+        },
+        {
+          "symbol": "QQQ",
+          "action": "HOLD",
+          "score": 3,
+          "price": 740.6199951171875,
+          "reason": "Score 3/5 RSI 51 - cooldown active"
+        },
+        {
+          "symbol": "SPY",
+          "action": "HOLD",
+          "score": 3,
+          "price": 746.739990234375,
+          "reason": "Score 3/5 RSI 46"
+        },
+        {
+          "symbol": "AMZN",
+          "action": "HOLD",
+          "score": 0,
+          "price": 244.38999938964844,
+          "reason": "Score 0/5 RSI 31"
+        }
+      ]
     }
-  ]
+  ],
+  "pending_orders": []
 }
