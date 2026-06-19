@@ -1,8 +1,10 @@
 import json, os
 from datetime import datetime
 import requests
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-# ===== MEMORY PERSISTENCE =====
 MEMORY_FILE = "memory.json"
 
 def load_memory():
@@ -17,7 +19,6 @@ def save_memory(data):
 
 memory = load_memory()
 
-# ===== BOT LOGIC =====
 equity = 102788
 cash = -114599
 positions = [
@@ -63,8 +64,24 @@ Next scan: 5 min | Mode: PAPER"""
 
 token = os.getenv("TELEGRAM_TOKEN")
 chat_id = os.getenv("TELEGRAM_CHAT")
+
 if token and chat_id:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                   json={"chat_id": chat_id, "text": message})
+
+    plt.figure(figsize=(8,4))
+    prices = [p.get('nvda', 0) for p in memory['patterns']]
+    plt.plot(prices, marker='o', linewidth=2)
+    plt.title(f'NVDA Memory Track - {patterns_count} points')
+    plt.ylabel('Price')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('chart.png')
+    plt.close()
+
+    with open('chart.png', 'rb') as photo:
+        requests.post(f"https://api.telegram.org/bot{token}/sendPhoto",
+                      data={"chat_id": chat_id, "caption": "📈 Live Memory Graph"},
+                      files={"photo": photo})
 
 save_memory(memory)
