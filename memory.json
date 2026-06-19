@@ -202,6 +202,13 @@
       "qqq": 740.62,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T18:00:40.221849",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -684,6 +691,46 @@
           "reason": "Score 1/5"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T18:00:40.221849",
+      "decisions": [
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 379.3999938964844,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "META",
+          "action": "HOLD",
+          "score": 1,
+          "price": 577.219970703125,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 2,
+          "price": 368.0299987792969,
+          "reason": "Score 2/5"
+        },
+        {
+          "symbol": "TSLA",
+          "action": "HOLD",
+          "score": 2,
+          "price": 400.489990234375,
+          "reason": "Score 2/5"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1703.9300537109375,
+          "reason": "Score 1/5"
+        }
+      ]
     }
   ],
   "pending_orders": [
@@ -702,6 +749,14 @@
       "qty": 5,
       "price": 740.62,
       "time": "2026-06-19T17:55:31.377974"
+    },
+    {
+      "id": "c46f0abf-e870-44c9-8a38-6c60b5631358",
+      "symbol": "QQQ",
+      "side": "sell",
+      "qty": 5,
+      "price": 740.6199951171875,
+      "time": "2026-06-19T18:00:40.221849"
     }
   ]
 }
