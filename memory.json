@@ -153,6 +153,13 @@
       "qqq": 740.62,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:33:12.730587",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -355,7 +362,64 @@
           "reason": "Score 1/5 RSI 45"
         }
       ]
+    },
+    {
+      "time": "2026-06-19T17:33:12.731301",
+      "decisions": [
+        {
+          "symbol": "TSM",
+          "action": "HOLD",
+          "score": 4,
+          "price": 462.1199951171875,
+          "reason": "Score 4/5 RSI 62"
+        },
+        {
+          "symbol": "BTC-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 62928.8984375,
+          "reason": "Score 1/5 RSI 47"
+        },
+        {
+          "symbol": "QQQ",
+          "action": "SELL",
+          "score": 3,
+          "price": 740.6199951171875,
+          "reason": "Score 3/5 RSI 51 - selling 13 free"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1696.9599609375,
+          "reason": "Score 1/5 RSI 45"
+        },
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 379.3999938964844,
+          "reason": "Score 1/5 RSI 19"
+        }
+      ]
     }
   ],
-  "pending_orders": []
+  "pending_orders": [
+    {
+      "id": "f9ac6b67-6e85-47b0-9e70-3eb599b7d6ab",
+      "symbol": "QQQ",
+      "side": "sell",
+      "qty": 13,
+      "price": 740.6199951171875,
+      "time": "2026-06-19T17:33:12.731301"
+    },
+    {
+      "id": "e30c0753-0704-4d37-8f80-e0316ff5dc6e",
+      "symbol": "NVDA",
+      "side": "sell",
+      "qty": 1,
+      "price": 210.69000244140625,
+      "time": "2026-06-19T17:33:12.731301"
+    }
+  ]
 }
