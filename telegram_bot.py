@@ -42,4 +42,15 @@ def format_message(account, positions, signals=None, actions=None):
         lines.append("- (none)")
     
     lines.extend(["", "━━━━━━━━━━━━━━━━━━━━"])
-    return "\n".join(lines)
+    return "\n".join(lines)msg = f"""🤖 BOT THINKING — {ticker}
+
+Mode: {mode}
+Confidence: {confidence}%
+Reasoning:
+• RSI: {rsi:.1f}
+• News: {sentiment}
+• Volume: {vol_ratio}x
+
+Decision: {decision}
+Next check: {next_run}"""
+send_telegram(msg)
