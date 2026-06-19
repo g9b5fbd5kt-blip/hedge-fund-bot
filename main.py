@@ -1,44 +1,59 @@
-import os, pytz, requests
+import os, pytz, random
 from datetime import datetime
 from alpaca_trade_api.rest import REST
+import requests
 
 api = REST(os.getenv('ALPACA_KEY'), os.getenv('ALPACA_SECRET'), base_url='https://paper-api.alpaca.markets')
 tg_token = os.getenv('TELEGRAM_TOKEN')
 tg_chat = os.getenv('TELEGRAM_CHAT')
 
 def send_tg(msg):
-    requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": msg})
+    requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                  json={"chat_id": tg_chat, "text": msg, "parse_mode": "Markdown"})
 
-now_et = datetime.now(pytz.timezone('US/Eastern'))
-clock = api.get_clock()
-is_open = clock.is_open
-hour = now_et.hour
-weekday = now_et.weekday() < 5
-extended = weekday and ((4 <= hour < 9) or (16 <= hour < 20))
+# --- ROTATING OPENERS ---
+openers = [
+    "GETTING THAT PAPER 💸",
+    "Working for that bread 🍞",
+    "Another day another dollar 💰",
+    "pimpin ain't easy 😎",
+    "Stacking chips 📈",
+    "Clocked in 💼"
+]
+opener = random.choice(openers)
 
-if is_open:
-    session = "REGULAR"
-    universe = ["AAPL","MSFT","NVDA"]
-elif extended:
-    session = "EXTENDED"
-    universe = ["SPY","QQQ"]
-else:
-    session = "CRYPTO"
-    universe = ["BTC/USD","ETH/USD"]
-
+# --- ACCOUNT DATA ---
 account = api.get_account()
-account_value = float(account.equity)
-now_cst = datetime.now(pytz.timezone('US/Central')).strftime('%I:%M %p')
-risk = account_value * 0.01
+equity = float(account.equity)
+last_equity = float(account.last_equity)
+buying_power = float(account.buying_power)
+day_change = equity - last_equity
+day_pct = (day_change / last_equity * 100) if last_equity else 0
 
-send_tg(f"✅ Heartbeat {now_cst}\nSession: {session}\nAccount: ${account_value:.2f}\nRisk: ${risk:.2f}\nTickers: {', '.join(universe)}")
+# --- POSITIONS (holdings) ---
+positions = api.list_positions()
+holdings_text = ""
+for p in positions[:5]:  # top 5
+    symbol = p.symbol
+    qty = p.qty
+    pl_pct = float(p.unrealized_intraday_plpc) * 100
+    arrow = "▲" if pl_pct >= 0 else "▼"
+    # simple text graph bar
+    bar = "█" * max(1, int(abs(pl_pct)))
+    holdings_text += f"- {symbol}  {qty}  {arrow} {abs(pl_pct):.1f}% {bar}\n"
 
-for ticker in universe:
-    try:
-        if "/" in ticker:
-            price = float(api.get_latest_crypto_trade(ticker).price)
-        else:
-            price = float(api.get_latest_trade(ticker).price)
-        send_tg(f"📊 {ticker} @ ${price:.2f} — watching (no trade, confidence filter active)")
-    except Exception as e:
-        send_tg(f"⚠️ {ticker} error")
+if not holdings_text:
+    holdings_text = "- No open positions\n"
+
+# --- BUILD MESSAGE (your screenshot format) ---
+msg = f"""{opener}
+
+────────────────────
+💰 ${equity:,.0f} ({'+' if day_change>=0 else ''}${day_change:,.0f} today)
+📊 Buying Power: ${buying_power:,.0f}
+📈 Day: {'+' if day_pct>=0 else ''}{day_pct:.2f}%
+
+Holdings
+{holdings_text}────────────────────"""
+
+send_tg(msg)
