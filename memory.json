@@ -188,6 +188,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:54:22.366302",
+      "nvda": 210.69,
+      "qqq": 740.62,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -590,24 +597,47 @@
           "reason": "Score 1/5 RSI 48"
         }
       ]
-    }
-  ],
-  "pending_orders": [
-    {
-      "id": "f9ac6b67-6e85-47b0-9e70-3eb599b7d6ab",
-      "symbol": "QQQ",
-      "side": "sell",
-      "qty": 13,
-      "price": 740.6199951171875,
-      "time": "2026-06-19T17:33:12.731301"
     },
     {
-      "id": "e30c0753-0704-4d37-8f80-e0316ff5dc6e",
-      "symbol": "NVDA",
-      "side": "sell",
-      "qty": 1,
-      "price": 210.69000244140625,
-      "time": "2026-06-19T17:33:12.731301"
+      "time": "2026-06-19T17:54:22.366302",
+      "decisions": [
+        {
+          "symbol": "BTC-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 63127.51171875,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "AAPL",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "QQQ",
+          "action": "HOLD",
+          "score": 1,
+          "price": 740.62,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "AVGO",
+          "action": "HOLD",
+          "score": 1,
+          "price": 100,
+          "reason": "Score 1/5"
+        },
+        {
+          "symbol": "TSM",
+          "action": "HOLD",
+          "score": 2,
+          "price": 100,
+          "reason": "Score 2/5"
+        }
+      ]
     }
-  ]
+  ],
+  "pending_orders": []
 }
