@@ -27,18 +27,15 @@ def safe_check():
         acct = api.get_account()
         bp = float(acct.buying_power)
         positions = api.list_positions()
-        if len(positions) >= 3: return False, "MAX"
-        if bp < 25: return False, "LOW"
-        return True, "OK"
+        return True, acct, positions
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": f"🚨 {str(e)[:80]}"})
-        return False, str(e)
+        return False, None, []
 
-def make_chart():
+def make_chart(equity=1000):
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(6,3), facecolor='#0A0E14')
     ax.set_facecolor('#0A0E14')
-    ax.plot([1000,1005,1002,1010], color='#00FF88', linewidth=2.5)
+    ax.plot([equity*0.99, equity*1.005, equity*0.998, equity*1.01], color='#00FF88', linewidth=2.5)
     ax.axis('off')
     path = '/tmp/chart.png'
     plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='#0A0E14')
@@ -51,27 +48,44 @@ def tg_send(text, photo=None):
     requests.post(url, json={"chat_id": TELEGRAM_CHAT, "text": text, "parse_mode": "Markdown", "reply_markup": kb})
     if photo: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", data={"chat_id": TELEGRAM_CHAT}, files={"photo": open(photo,'rb')})
 
-def trade():
-    ok,_ = safe_check()
-    if not ok: return 0
-    acct = api.get_account()
+et = datetime.datetime.now(pytz.timezone('US/Eastern'))
+ok, acct, positions = safe_check()
+
+if not ok:
+    tg_send("🚨 *Bot offline* - can't reach Alpaca")
+else:
     equity = float(acct.equity)
+    bp = float(acct.buying_power)
+    
+    # HEARTBEAT - every 5 min
+    status = f"*{random.choice(PHRASES)}*\n\n"
+    status += f"🕒 {et.strftime('%I:%M %p ET')}\n"
+    status += f"💵 Equity: ${equity:,.2f}\n"
+    status += f"💰 BP: ${bp:,.2f}\n"
+    status += f"📊 Positions: {len(positions)}/3\n"
+    
+    action = "Scanning SPY, QQQ, BTC, ETH..."
     for sym in ["SPY","QQQ","BTC/USD","ETH/USD"]:
         try:
             bars = api.get_bars(sym, "1Min", limit=5).df
-            if len(bars)<5: continue
-            if bars.close.iloc[-1]/bars.close.iloc[-5]-1 < -0.005:
-                qty = 1 if "/" not in sym else 0.001
-                api.submit_order(sym, qty, "buy", "market", "day")
-                cur.execute("INSERT INTO trades VALUES (?,?,?,?,?,?)", (datetime.datetime.now().isoformat(), sym, "BUY", float(qty), float(bars.close.iloc[-1]), 0))
-                conn.commit()
-                break
-        except: continue
-    return equity
-
-et = datetime.datetime.now(pytz.timezone('US/Eastern'))
-try:
-    if et.hour==8 and et.minute<3: tg_send(f"*{MORNING}*\n\n💵 Ready", make_chart())
-    elif et.hour in [16,22] and et.minute<6: tg_send(f"*{random.choice(PHRASES)}*\n\n💰 Checking...", make_chart())
-    else: trade()
-except Exception as e: tg_send(f"🚨 Crash: {str(e)[:100]}")
+            if len(bars)>=5:
+                chg = (bars.close.iloc[-1]/bars.close.iloc[-5]-1)*100
+                status += f"\n• {sym}: {chg:+.2f}%"
+                if chg < -0.5 and len(positions)<3 and bp>25:
+                    qty = 1 if "/" not in sym else 0.001
+                    api.submit_order(sym, qty, "buy", "market", "day")
+                    cur.execute("INSERT INTO trades VALUES (?,?,?,?,?,?)", (datetime.datetime.now().isoformat(), sym, "BUY", float(qty), float(bars.close.iloc[-1]), 0))
+                    conn.commit()
+                    action = f"✅ BOUGHT {sym}"
+                    break
+        except: pass
+    
+    status += f"\n\n{action}"
+    
+    # Keep your original summaries too
+    if et.hour==8 and et.minute<5:
+        tg_send(f"*{MORNING}*\n\n{status}", make_chart(equity))
+    elif et.hour in [16,22] and et.minute<6:
+        tg_send(status, make_chart(equity))
+    else:
+        tg_send(status, make_chart(equity))
