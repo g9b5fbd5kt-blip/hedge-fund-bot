@@ -160,6 +160,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:35:36.787383",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -400,6 +407,46 @@
           "score": 1,
           "price": 379.3999938964844,
           "reason": "Score 1/5 RSI 19"
+        }
+      ]
+    },
+    {
+      "time": "2026-06-19T17:35:36.788055",
+      "decisions": [
+        {
+          "symbol": "NVDA",
+          "action": "HOLD",
+          "score": 2,
+          "price": 210.69000244140625,
+          "reason": "Score 2/5 RSI 50 - no shares free (0/965)"
+        },
+        {
+          "symbol": "SPY",
+          "action": "HOLD",
+          "score": 3,
+          "price": 746.739990234375,
+          "reason": "Score 3/5 RSI 46"
+        },
+        {
+          "symbol": "META",
+          "action": "HOLD",
+          "score": 1,
+          "price": 577.219970703125,
+          "reason": "Score 1/5 RSI 36"
+        },
+        {
+          "symbol": "BTC-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 62967.28125,
+          "reason": "Score 1/5 RSI 47"
+        },
+        {
+          "symbol": "ETH-USD",
+          "action": "HOLD",
+          "score": 1,
+          "price": 1698.469970703125,
+          "reason": "Score 1/5 RSI 45"
         }
       ]
     }
