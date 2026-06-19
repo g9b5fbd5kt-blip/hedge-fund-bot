@@ -1,4 +1,4 @@
-import os, pytz, random, io, csv
+import os, pytz, random, io, csv, json
 from datetime import datetime, timedelta
 from alpaca_trade_api.rest import REST, TimeFrame
 import requests
@@ -10,6 +10,7 @@ api = REST(os.getenv('ALPACA_KEY'), os.getenv('ALPACA_SECRET'), base_url='https:
 tg_token = os.getenv('TELEGRAM_TOKEN')
 tg_chat = os.getenv('TELEGRAM_CHAT')
 TRADES_FILE = 'trades.csv'
+BRAIN_FILE = 'brain.json'
 
 def send_tg(text):
     requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage", json={"chat_id": tg_chat, "text": text, "parse_mode": "Markdown"})
@@ -24,6 +25,45 @@ def log_trade(symbol, action, confidence, price, reason):
         if not file_exists:
             writer.writerow(['time','symbol','action','confidence','price','reason'])
         writer.writerow([datetime.now().isoformat(), symbol, action, confidence, price, reason])
+
+def update_brain(symbol, was_correct):
+    brain = {}
+    if os.path.isfile(BRAIN_FILE):
+        try:
+            with open(BRAIN_FILE) as f:
+                brain = json.load(f)
+        except: pass
+    if symbol not in brain:
+        brain[symbol] = {'trades':0,'correct':0}
+    brain[symbol]['trades'] += 1
+    if was_correct:
+        brain[symbol]['correct'] += 1
+    brain[symbol]['accuracy'] = round(brain[symbol]['correct']/brain[symbol]['trades']*100)
+    with open(BRAIN_FILE,'w') as f:
+        json.dump(brain, f)
+
+def advanced_reasoning(sym, score, reasons):
+    ny = datetime.now(pytz.timezone('US/Eastern'))
+    hour = ny.hour
+    market_open = 9 <= hour < 16 and ny.weekday() < 5
+    context = []
+    if not market_open:
+        context.append("after-hours analysis")
+    if ny.weekday() == 4:
+        context.append("Friday caution")
+    if 70 <= score < 75:
+        context.append("watching closely")
+    brain = {}
+    if os.path.isfile(BRAIN_FILE):
+        try:
+            with open(BRAIN_FILE) as f:
+                brain = json.load(f)
+        except: pass
+    acc = brain.get(sym, {}).get('accuracy')
+    if acc and acc < 65:
+        context.append(f"still learning {sym}")
+    base = ', '.join(reasons[:2])
+    return base + (f" — {context[0]}" if context else "")
 
 def daily_review():
     if not os.path.isfile(TRADES_FILE):
@@ -44,12 +84,13 @@ def daily_review():
                 if len(bars) < 2: continue
                 change = (bars['close'].iloc[-1] - bars['close'].iloc[-2]) / bars['close'].iloc[-2] * 100
                 was_right = (trade['action'] == 'SELL' and change < 0) or (trade['action'] == 'BUY' and change > 0)
+                update_brain(trade['symbol'], was_right)
                 emoji = "✅" if was_right else "❌"
                 if was_right: correct += 1
                 review += f"{emoji} {trade['symbol']}: {trade['action']} at {int(trade['confidence'])}% → {change:+.1f}%\n"
             except: pass
         accuracy = correct / len(recent) * 100 if len(recent) > 0 else 0
-        review += f"\n*Accuracy: {accuracy:.0f}%*\nLearning from every trade."
+        review += f"\n*Accuracy: {accuracy:.0f}%*\nI'm adapting my reasoning."
         send_tg(review)
     except: pass
 
@@ -57,7 +98,7 @@ openers = ["GETTING THAT PAPER 💸","Working for that bread 🍞","Another day 
 opener = random.choice(openers)
 
 ny_time = datetime.now(pytz.timezone('US/Eastern'))
-if ny_time.hour == 9 and ny_time.minute < 35:
+if ny_time.hour == 9 and ny_time.minute < 35 and ny_time.weekday() < 5:
     daily_review()
 
 account = api.get_account()
@@ -78,7 +119,8 @@ for p in positions[:5]:
 if not holdings_text:
     holdings_text = "- Cash only\n"
 
-send_tg(f"{opener}\n\n────────────────────\n💰 ${equity:,.0f} ({'+' if day_change>=0 else ''}${day_change:,.0f} today)\n📈 Day: {'+' if day_pct>=0 else ''}{day_pct:.2f}%\n\nHoldings\n{holdings_text}────────────────────")
+# BUYING POWER BACK IN MESSAGE
+send_tg(f"{opener}\n\n────────────────────\n💰 ${equity:,.0f} ({'+' if day_change>=0 else ''}${day_change:,.0f} today)\n📈 Day: {'+' if day_pct>=0 else ''}{day_pct:.2f}%\n💵 Buying Power: ${buying_power:,.0f}\n\nHoldings\n{holdings_text}────────────────────")
 
 WATCHLIST = ['NVDA','QQQ','SPY','AAPL','TSLA']
 for sym in WATCHLIST[:3]:
@@ -132,21 +174,24 @@ for sym in WATCHLIST[:3]:
         plt.close()
         buf.seek(0)
 
-        thinking = f"I'm {score}% sure because {', '.join(reasons[:2])}."
+        thinking = f"I'm {score}% sure because {advanced_reasoning(sym, score, reasons)}."
         caption = f"*{sym}* — {trend}\n{thinking}\nConfidence: {score}% | RSI: {rsi_now:.0f}"
         in_position = sym in pos_dict
-        if score >= 75 and not in_position and len(positions) < 5:
+        ny = datetime.now(pytz.timezone('US/Eastern'))
+        market_open = 9 <= ny.hour < 16 and ny.weekday() < 5
+
+        if score >= 75 and not in_position and len(positions) < 5 and market_open:
             qty = int((buying_power * 0.10) // price)
             if qty > 0:
                 api.submit_order(symbol=sym, qty=qty, side='buy', type='market', time_in_force='day')
                 log_trade(sym, 'BUY', score, price, thinking)
-                caption = f"🚀 BOUGHT {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty}"
-        elif score <= 30 and in_position:
+                caption = f"🚀 BOUGHT {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty} | BP: ${buying_power:,.0f}"
+        elif score <= 30 and in_position and market_open:
             qty = int(float(pos_dict[sym].qty) * 0.5)
             if qty > 0:
                 api.submit_order(symbol=sym, qty=qty, side='sell', type='market', time_in_force='day')
                 log_trade(sym, 'SELL', score, price, thinking)
-                caption = f"📉 SOLD {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty}"
+                caption = f"📉 SOLD {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty} | BP: ${buying_power:,.0f}"
         send_photo(buf, caption)
     except Exception as e:
-        send_tg(f"⚠️ {sym} skipped")
+        pass
