@@ -25,8 +25,40 @@ def log_trade(symbol, action, confidence, price, reason):
             writer.writerow(['time','symbol','action','confidence','price','reason'])
         writer.writerow([datetime.now().isoformat(), symbol, action, confidence, price, reason])
 
+def daily_review():
+    if not os.path.isfile(TRADES_FILE):
+        return
+    try:
+        import pandas as pd
+        df = pd.read_csv(TRADES_FILE)
+        df['time'] = pd.to_datetime(df['time'])
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        recent = df[df['time'] > yesterday]
+        if recent.empty:
+            return
+        review = "📊 *YESTERDAY'S REPORT CARD*\n────────────────────\n"
+        correct = 0
+        for _, trade in recent.iterrows():
+            try:
+                bars = api.get_bars(trade['symbol'], TimeFrame.Day, limit=2, feed='iex').df
+                if len(bars) < 2: continue
+                change = (bars['close'].iloc[-1] - bars['close'].iloc[-2]) / bars['close'].iloc[-2] * 100
+                was_right = (trade['action'] == 'SELL' and change < 0) or (trade['action'] == 'BUY' and change > 0)
+                emoji = "✅" if was_right else "❌"
+                if was_right: correct += 1
+                review += f"{emoji} {trade['symbol']}: {trade['action']} at {int(trade['confidence'])}% → {change:+.1f}%\n"
+            except: pass
+        accuracy = correct / len(recent) * 100 if len(recent) > 0 else 0
+        review += f"\n*Accuracy: {accuracy:.0f}%*\nLearning from every trade."
+        send_tg(review)
+    except: pass
+
 openers = ["GETTING THAT PAPER 💸","Working for that bread 🍞","Another day another dollar 💰","pimpin ain't easy 😎","Stacking chips 📈","Clocked in 💼"]
 opener = random.choice(openers)
+
+ny_time = datetime.now(pytz.timezone('US/Eastern'))
+if ny_time.hour == 9 and ny_time.minute < 35:
+    daily_review()
 
 account = api.get_account()
 equity = float(account.equity)
@@ -55,20 +87,17 @@ for sym in WATCHLIST[:3]:
         bars = api.get_bars(sym, TimeFrame.Day, start=start, feed='iex').df.tail(30)
         if bars.empty or len(bars) < 20:
             continue
-
         bars['MA20'] = bars['close'].rolling(20).mean()
         bars['VolAvg'] = bars['volume'].rolling(10).mean()
         price = float(bars['close'].iloc[-1])
         ma20 = float(bars['MA20'].iloc[-1])
         vol = float(bars['volume'].iloc[-1])
         vol_avg = float(bars['VolAvg'].iloc[-1])
-
         delta = bars['close'].diff()
         gain = delta.clip(lower=0).rolling(14).mean()
         loss = -delta.clip(upper=0).rolling(14).mean()
         rsi = 100 - (100 / (1 + gain/loss))
         rsi_now = float(rsi.iloc[-1])
-
         score = 0
         reasons = []
         if price > ma20:
@@ -86,45 +115,38 @@ for sym in WATCHLIST[:3]:
             reasons.append("more people buying")
         else:
             reasons.append("quiet volume")
-
         trend = "Bullish" if price > ma20 else "Bearish"
-        color = 'green' if trend == "Bullish" else 'red'
+        color = '#00ff88' if trend == "Bullish" else '#ff4444'
 
-        plt.figure(figsize=(6,3))
-        plt.plot(bars.index, bars['close'], color=color, linewidth=2)
-        plt.plot(bars.index, bars['MA20'], '--', color='gray', alpha=0.6)
-        plt.title(f"{sym} - {score}% confident", color=color)
-        plt.grid(alpha=0.2)
+        plt.figure(figsize=(6,3), facecolor='#0d0d0d')
+        ax = plt.gca()
+        ax.set_facecolor('#0d0d0d')
+        plt.plot(bars.index, bars['close'], color=color, linewidth=2.5)
+        plt.plot(bars.index, bars['MA20'], '--', color='#888888', alpha=0.5)
+        plt.title(f"{sym} — {score}% confident", color='white', fontsize=12, weight='bold')
+        plt.tick_params(colors='white', labelsize=8)
+        plt.grid(color='#333333', alpha=0.3)
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150)
+        plt.savefig(buf, format='png', dpi=150, facecolor='#0d0d0d')
         plt.close()
         buf.seek(0)
 
         thinking = f"I'm {score}% sure because {', '.join(reasons[:2])}."
         caption = f"*{sym}* — {trend}\n{thinking}\nConfidence: {score}% | RSI: {rsi_now:.0f}"
-
-        # TRADING LOGIC
         in_position = sym in pos_dict
-        action_taken = None
-
         if score >= 75 and not in_position and len(positions) < 5:
             qty = int((buying_power * 0.10) // price)
             if qty > 0:
                 api.submit_order(symbol=sym, qty=qty, side='buy', type='market', time_in_force='day')
                 log_trade(sym, 'BUY', score, price, thinking)
                 caption = f"🚀 BOUGHT {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty}"
-                action_taken = 'BUY'
-
         elif score <= 30 and in_position:
             qty = int(float(pos_dict[sym].qty) * 0.5)
             if qty > 0:
                 api.submit_order(symbol=sym, qty=qty, side='sell', type='market', time_in_force='day')
                 log_trade(sym, 'SELL', score, price, thinking)
                 caption = f"📉 SOLD {sym}\n{thinking}\nConfidence: {score}% | Qty: {qty}"
-                action_taken = 'SELL'
-
         send_photo(buf, caption)
-
     except Exception as e:
-        send_tg(f"⚠️ {sym} skipped: {str(e)[:50]}")
+        send_tg(f"⚠️ {sym} skipped")
