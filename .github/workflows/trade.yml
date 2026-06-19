@@ -21,7 +21,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
-        run: pip install requests matplotlib yfinance
+        run: pip install requests matplotlib yfinance pandas numpy
 
       - name: Run bot
         run: python bot.py
