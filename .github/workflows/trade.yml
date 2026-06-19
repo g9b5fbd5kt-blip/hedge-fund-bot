@@ -1,20 +1,19 @@
-name: Paper Route v5
+name: v5
 on:
-  schedule:
-    - cron: '*/1 * * * *' # every minute
+  schedule: [{cron: '*/1 * * * *'}]
   workflow_dispatch:
-
 jobs:
-  trade:
+  run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: pip install alpaca-trade-api requests matplotlib pytz
+        with: {python-version: '3.11'}
+      - run: pip install alpaca-trade-api requests matplotlib pytz psycopg2-binary
       - run: python bot.py
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
           ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
