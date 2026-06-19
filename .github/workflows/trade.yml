@@ -1,13 +1,15 @@
 name: Trade Bot v9.2 - Free Tier
 on:
   schedule:
-    # MARKET HOURS: Every 15 min, Mon-Fri 9:30am-4pm ET (13:30-20:00 UTC)
+    # MARKET HOURS: Every 15 min, Mon-Fri 9:30am-4pm ET
     - cron: '30,45 13 * * 1-5'
     - cron: '0,15,30,45 14-19 * * 1-5'
     - cron: '0 20 * * 1-5'
-    # CRYPTO OVERNIGHT: Every 30 min, all other times
-    - cron: '0,30 0-12,21-23 * * 1-5'
-    - cron: '0,30 * * 0,6'
+    # CRYPTO OVERNIGHT: Every 30 min, weekdays overnight
+    - cron: '0,30 0-12 * * 1-5'
+    - cron: '0,30 21-23 * * 1-5'
+    # WEEKENDS: Every 30 min, Sat & Sun
+    - cron: '0,30 * * * 0,6'
   workflow_dispatch:
 jobs:
   trade:
