@@ -58,9 +58,8 @@ try:
     positions = [{"symbol":p['symbol'],"qty":float(p['qty']),"available":float(p.get('qty_available',p['qty'])),"price":safe_float(p['current_price']),"value":safe_float(p['market_value']),"pnl":safe_float(p['unrealized_plpc'])*100} for p in pos_raw]
 except:
     equity, cash = 102788, -114599
-    positions = [{"symbol":"NVDA","qty":965,"available":0,"price":210.69,"value":203315,"pnl":1.4},{"symbol":"QQQ","qty":19,"available":0,"price":740.62,"value":14072,"pnl":0.6}]
+    positions = [{"symbol":"NVDA","qty":965,"available":1,"price":210.69,"value":203315,"pnl":1.4},{"symbol":"QQQ","qty":19,"available":13,"price":740.62,"value":14072,"pnl":0.6}]
 
-# ===== VERIFY AND CANCEL STALE =====
 verified = []; errors = []; now = datetime.now()
 for po in memory["pending_orders"][:]:
     try:
@@ -74,10 +73,9 @@ for po in memory["pending_orders"][:]:
         elif age > timedelta(minutes=10):
             requests.delete(f"{BASE}/v2/orders/{po['id']}", headers=HDR, timeout=5)
             memory["pending_orders"].remove(po)
-            errors.append(f"Cancelled stale {po['symbol']} order ({age.seconds//60}m old)")
+            errors.append(f"Cancelled stale {po['symbol']} ({age.seconds//60}m)")
     except: pass
 
-# ===== SCAN =====
 universe = list(set([p['symbol'] for p in positions] + ['NVDA','QQQ','SPY','AAPL','MSFT','AMD','TSM','AVGO','META','GOOGL','AMZN','TSLA','BTC-USD','ETH-USD']))
 market = {s: get_tech(s, next((p['price'] for p in positions if p['symbol']==s), 100)) for s in universe}
 
@@ -104,7 +102,7 @@ risk_override = tech_exp > 200
 for sym, td in market.items():
     score = sum([td['price']>td['sma20'], td['sma20']>td['sma50'], 35<td['rsi']<65, td['macd_bull'], tech_exp<50])
     pos = next((p for p in positions if p['symbol']==sym), None)
-    action = "HOLD"; reason = f"Score {score}/5"
+    action = "HOLD"; reason = f"Score {score}/5 RSI {td['rsi']:.0f}"
 
     if not risk_override and (sym in pending_syms or sym in recent):
         reason += " - cooldown"; decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason}); continue
@@ -112,17 +110,18 @@ for sym, td in market.items():
     if pos and (tech_exp>55 or risk_override):
         available = pos.get('available', 0)
         if available >= 1:
-            qty = int(min(available, 5)) # smaller chunks for stuck market
+            qty = int(min(available, 10 if risk_override else 5))
             action = "SELL"
             try:
-                # Use limit order at bid to force fill in paper
-                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"limit","limit_price":round(td['price']*0.99,2),"time_in_force":"day"}, timeout=5)
+                r = requests.post(f"{BASE}/v2/orders", headers=HDR, json={"symbol":sym,"qty":qty,"side":"sell","type":"market","time_in_force":"day"}, timeout=5)
                 resp = r.json()
                 if 'id' in resp:
                     memory["pending_orders"].append({"id":resp['id'],"symbol":sym,"side":"sell","qty":qty,"price":td['price'],"time":now.isoformat()})
-                    executed.append(f"SELL {qty} {sym} limit")
+                    executed.append(f"SELL {qty} {sym} MARKET"); reason += f" - risk sell {qty}"
+                else:
+                    errors.append(f"{sym} rejected: {resp.get('message','')}")
             except Exception as e:
-                errors.append(f"{sym} order fail")
+                errors.append(f"{sym} error")
 
     decisions.append({"symbol":sym,"action":action,"score":score,"price":td['price'],"reason":reason})
 
@@ -132,18 +131,35 @@ top = sorted(decisions, key=lambda x: x['score'], reverse=True)[:3]
 msg = f"""🔥 HEDGE FUND COMMAND CENTER
 pimpin ain't easy 😎
 ────────────────────
-💰 ${equity:,.0f} | Cash: ${cash:,.0f}
-📊 Trades: {len(trades)} | Kelly: {kelly*100:.1f}%
-🎯 POSITIONS: NVDA {positions[0]['qty']:.0f}({positions[0]['available']:.0f} free) QQQ {positions[1]['qty']:.0f}({positions[1]['available']:.0f} free)
-🧠 Risk Override: {'ON' if risk_override else 'OFF'} | Pending: {len(memory['pending_orders'])}
-🧮 TOP: {', '.join([f"{d['symbol']} {d['action']}" for d in top])}
-{chr(10)+'✅ '+chr(10).join(verified) if verified else ''}
-{chr(10)+'⚡ '+chr(10).join(executed) if executed else ''}
-{chr(10)+'❌ '+chr(10).join(errors[:2]) if errors else ''}
-🛡️ Tech: {tech_exp:.1f}%"""
+💰 ${equity:,.0f} ({day_chg:+.2f}%) | Cash: ${cash:,.0f}
+📊 Trades: {len(trades)} | Win: {win_rate*100:.0f}% | Kelly: {kelly*100:.1f}%
+🎯 POSITIONS ({len(positions)})
+""" + "\n".join([f"- {p['symbol']} {p['qty']:.0f} ({p['available']:.0f} free) @ ${p['price']:.2f}" for p in positions]) + f"""
+
+🧠 BRAIN
+- Scanning: {len(universe)} | Risk Override: {'ON' if risk_override else 'OFF'}
+- Pending: {len(memory['pending_orders'])} | Verified: {len(verified)}
+
+🧮 TOP
+""" + "\n".join([f"• {d['symbol']}: {d['action']} ({d['reason']})" for d in top]) + f"""
+{chr(10)+'✅ FILLED:'+chr(10)+'• ' + chr(10)+'• '.join(verified) if verified else ''}
+{chr(10)+'⚡ SENT:'+chr(10)+'• ' + chr(10)+'• '.join(executed) if executed else ''}
+{chr(10)+'❌ '+chr(10).join(errors[:3]) if errors else ''}
+
+🛡️ RISK
+- Tech: {tech_exp:.1f}% (target <45%)
+────────────────────
+Next: 5 min | Mode: PAPER AUTO"""
 
 token = os.getenv("TELEGRAM_TOKEN"); chat = os.getenv("TELEGRAM_CHAT")
 if token and chat:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id":chat,"text":msg})
+    plt.figure(figsize=(11,5.5)); eq=[p.get('equity',equity) for p in memory['patterns']]
+    plt.plot(eq, linewidth=2.5, color='#00ff88'); plt.fill_between(range(len(eq)), eq, alpha=0.2, color='#00ff88')
+    plt.title(f'Live Equity - ${equity:,.0f} | Risk Override', fontweight='bold', color='white'); plt.grid(True, alpha=0.2)
+    ax = plt.gca(); ax.set_facecolor('#0a0a0a'); plt.gcf().set_facecolor('#0a0a0a')
+    plt.tight_layout(); plt.savefig('chart.png', dpi=150, facecolor='#0a0a0a'); plt.close()
+    with open('chart.png','rb') as f:
+        requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id":chat,"caption":f"Friday 1:03pm CST - Market Orders Active"}, files={"photo":f})
 
 save_memory(memory)
