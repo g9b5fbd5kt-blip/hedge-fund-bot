@@ -154,4 +154,4 @@ try:
     else:
         trade()
 except Exception as e:
-    tg_send(f"🚨 Crash: {str(e)[:100]}")
+    tg_send(f"🚨 Crash: {str(e)[:100]}") 
