@@ -1,1 +1,6 @@
-{"patterns": [], "trades": [], "pending_orders": [], "start_equity": 1000}
+{
+  "open_trades": {},
+  "closed_trades": [],
+  "pending": [],
+  "equity_start": 1000
+}
