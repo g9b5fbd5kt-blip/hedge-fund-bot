@@ -1,27 +1,24 @@
-import json, os 
+import json, os
 from datetime import datetime
 import requests
 
-# ===== MEMORY PERSISTENCE (new) =====
+# ===== MEMORY PERSISTENCE =====
 MEMORY_FILE = "memory.json"
 
 def load_memory():
     if os.path.exists(MEMORY_FILE):
         with open(MEMORY_FILE, "r") as f:
-            data = json.load(f)
-    else:
-        data = {"patterns": [], "trades": [], "start_equity": 100000}
-    return data
+            return json.load(f)
+    return {"patterns": [], "trades": [], "start_equity": 100000}
 
 def save_memory(data):
     with open(MEMORY_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# Load memory first
 memory = load_memory()
 
-# ===== YOUR BOT LOGIC (keep your real code here later) =====
-# For now, this replicates your current output
+# ===== YOUR EXISTING BOT LOGIC GOES HERE =====
+# (I'm keeping your current positions/output exactly the same)
 equity = 102788
 cash = -114599
 positions = [
@@ -29,16 +26,14 @@ positions = [
     {"symbol": "QQQ", "qty": 19, "price": 736.37, "pnl": 0.6}
 ]
 
-# Add a pattern each run (this is what makes memory grow)
+# Add pattern each run
 memory["patterns"].append({
     "time": datetime.now().isoformat(),
     "nvda": 207.88,
     "qqq": 736.37
 })
-# Keep only last 100 to stay small
 memory["patterns"] = memory["patterns"][-100:]
 
-# ===== TELEGRAM OUTPUT (matches your screenshot) =====
 patterns_count = len(memory["patterns"])
 status = "WARMING UP" if patterns_count < 20 else "LEARNING"
 
@@ -68,13 +63,12 @@ pimpin ain't easy 😎
 ────────────────────
 Next scan: 5 min | Mode: PAPER"""
 
-# Send to Telegram (uses your existing secret)
+# Send using YOUR existing secret names
 token = os.getenv("TELEGRAM_TOKEN")
 chat_id = os.getenv("TELEGRAM_CHAT_ID")
 if token and chat_id:
     requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                   json={"chat_id": chat_id, "text": message})
 
-# ===== SAVE MEMORY LAST (critical) =====
+# Save memory
 save_memory(memory)
-print(f"Saved memory with {patterns_count} patterns")
