@@ -125,6 +125,13 @@
       "qqq": 740.6199951171875,
       "equity": 102788.28,
       "cash": -114599.35
+    },
+    {
+      "time": "2026-06-19T17:22:14.580060",
+      "nvda": 210.69000244140625,
+      "qqq": 740.6199951171875,
+      "equity": 102788.28,
+      "cash": -114599.35
     }
   ],
   "trades": [
@@ -151,8 +158,62 @@
       "symbol": "NVDA",
       "side": "sell",
       "qty": 836
+    },
+    {
+      "time": "2026-06-19T17:22:14.729902",
+      "symbol": "QQQ",
+      "side": "sell",
+      "qty": 3
+    },
+    {
+      "time": "2026-06-19T17:22:14.904630",
+      "symbol": "NVDA",
+      "side": "sell",
+      "qty": 193
     }
   ],
   "start_equity": 100000,
-  "last_equity": 102788.28
+  "last_equity": 102788.28,
+  "decisions": [
+    {
+      "time": "2026-06-19T17:22:14.904651",
+      "decisions": [
+        {
+          "symbol": "META",
+          "action": "HOLD",
+          "score": 1,
+          "price": 577.219970703125,
+          "reason": "Score 1/5, RSI 36"
+        },
+        {
+          "symbol": "SPY",
+          "action": "HOLD",
+          "score": 3,
+          "price": 746.739990234375,
+          "reason": "Score 3/5, RSI 46"
+        },
+        {
+          "symbol": "AMZN",
+          "action": "HOLD",
+          "score": 0,
+          "price": 244.38999938964844,
+          "reason": "Score 0/5, RSI 31"
+        },
+        {
+          "symbol": "GOOGL",
+          "action": "HOLD",
+          "score": 2,
+          "price": 368.0299987792969,
+          "reason": "Score 2/5, RSI 43"
+        },
+        {
+          "symbol": "MSFT",
+          "action": "HOLD",
+          "score": 1,
+          "price": 379.3999938964844,
+          "reason": "Score 1/5, RSI 19"
+        }
+      ]
+    }
+  ]
 }
