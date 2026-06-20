@@ -1,4 +1,4 @@
-name: v5
+name: v
 on:
   schedule: [{cron: '*/1 * * * *'}]
   workflow_dispatch:
